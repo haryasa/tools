@@ -287,7 +287,7 @@ def render_colophon(tools: list[dict[str, str | None]]) -> str:
 """
 
 
-def stage_site(tools: list[dict[str, str | None]], index: str, colophon: str) -> None:
+def stage_site(index: str, colophon: str) -> None:
     """Assemble the deploy-ready _site/ directory with the GA tag injected.
 
     Source tool files are copied verbatim except for the analytics tag added
@@ -311,7 +311,7 @@ def main() -> None:
     (ROOT / "index.html").write_text(index, encoding="utf-8")
     (ROOT / "colophon.html").write_text(colophon, encoding="utf-8")
     # Deploy artifact with the analytics tag stamped into every page.
-    stage_site(tools, index, colophon)
+    stage_site(index, colophon)
     print(f"Built index.html + colophon.html and staged _site/ ({len(tools)} tools)")
 
 
