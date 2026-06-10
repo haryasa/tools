@@ -48,12 +48,6 @@ colophon.html     generated: created/updated dates    (git-ignored)
    ```
 4. Commit and push — the Action rebuilds the index and deploys.
 
-## Starter tools
-
-- `tools/json-formatter.html` — pretty-print, minify, and validate JSON
-- `tools/uuid-generator.html` — generate v4 UUIDs in bulk
-- `tools/base64.html` — UTF-8-safe Base64 encode/decode
-
 ## One-time GitHub Pages setup
 
 After pushing to GitHub: **Settings → Pages → Build and deployment → Source:
