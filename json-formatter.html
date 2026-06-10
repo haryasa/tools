@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JSON Formatter</title>
+  <meta name="description" content="Pretty-print, minify, and validate JSON entirely in your browser.">
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      max-width: 760px; margin: 0 auto; padding: 2rem 1.25rem 4rem;
+      line-height: 1.5; color: #1a1a1a; background: #fafafa;
+    }
+    h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+    .sub { color: #666; margin: 0 0 1.5rem; font-size: .92rem; }
+    textarea {
+      width: 100%; min-height: 240px; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: .9rem; padding: .8rem; border: 1px solid #ccc; border-radius: 8px;
+      background: #fff; color: inherit; resize: vertical; white-space: pre; tab-size: 2;
+    }
+    .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin: 1rem 0; }
+    button {
+      font: inherit; padding: .55rem 1.1rem; border: 1px solid #ccc;
+      border-radius: 8px; background: #fff; color: inherit; cursor: pointer;
+    }
+    button:hover { border-color: #999; }
+    button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+    label.indent { font-size: .88rem; color: #666; margin-left: auto; }
+    select { font: inherit; padding: .35rem .4rem; border-radius: 6px; border: 1px solid #ccc; background: #fff; color: inherit; }
+    .status { font-size: .88rem; min-height: 1.4em; margin-top: .5rem; }
+    .status.ok { color: #15803d; }
+    .status.err { color: #dc2626; }
+    a.back { color: #888; font-size: .85rem; text-decoration: none; }
+    @media (prefers-color-scheme: dark) {
+      body { color: #e6e6e6; background: #111; }
+      .sub, label.indent { color: #aaa; }
+      textarea, button, select { background: #1c1c1c; border-color: #333; }
+    }
+  </style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; Tools</a>
+  <h1>JSON Formatter</h1>
+  <p class="sub">Pretty-print, minify, and validate JSON. Everything runs locally in your browser.</p>
+
+  <textarea id="input" placeholder='Paste JSON here, e.g. {"hello":"world"}' spellcheck="false"></textarea>
+
+  <div class="row">
+    <button class="primary" id="format">Format</button>
+    <button id="minify">Minify</button>
+    <button id="copy">Copy</button>
+    <button id="clear">Clear</button>
+    <label class="indent">Indent
+      <select id="indent">
+        <option value="2" selected>2 spaces</option>
+        <option value="4">4 spaces</option>
+        <option value="\t">Tab</option>
+      </select>
+    </label>
+  </div>
+  <div class="status" id="status"></div>
+
+  <script>
+    const input = document.getElementById('input');
+    const status = document.getElementById('status');
+    const indentSel = document.getElementById('indent');
+
+    function setStatus(msg, kind) {
+      status.textContent = msg;
+      status.className = 'status' + (kind ? ' ' + kind : '');
+    }
+
+    function parse() {
+      try {
+        return [JSON.parse(input.value), null];
+      } catch (e) {
+        return [null, e.message];
+      }
+    }
+
+    function indentValue() {
+      const v = indentSel.value;
+      return v === '\\t' ? '\t' : parseInt(v, 10);
+    }
+
+    document.getElementById('format').onclick = () => {
+      const [data, err] = parse();
+      if (err) return setStatus('Invalid JSON: ' + err, 'err');
+      input.value = JSON.stringify(data, null, indentValue());
+      setStatus('Formatted ✓', 'ok');
+    };
+
+    document.getElementById('minify').onclick = () => {
+      const [data, err] = parse();
+      if (err) return setStatus('Invalid JSON: ' + err, 'err');
+      input.value = JSON.stringify(data);
+      setStatus('Minified ✓', 'ok');
+    };
+
+    document.getElementById('copy').onclick = async () => {
+      if (!input.value) return;
+      try {
+        await navigator.clipboard.writeText(input.value);
+        setStatus('Copied to clipboard ✓', 'ok');
+      } catch {
+        setStatus('Could not access clipboard', 'err');
+      }
+    };
+
+    document.getElementById('clear').onclick = () => {
+      input.value = '';
+      setStatus('');
+      input.focus();
+    };
+
+    // Live validation as you type.
+    input.addEventListener('input', () => {
+      if (!input.value.trim()) return setStatus('');
+      const [, err] = parse();
+      setStatus(err ? 'Invalid JSON: ' + err : 'Valid JSON ✓', err ? 'err' : 'ok');
+    });
+  </script>
+</body>
+</html>

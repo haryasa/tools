@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Base64 Encoder / Decoder</title>
+  <meta name="description" content="Encode and decode Base64 text with correct UTF-8 handling.">
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      max-width: 760px; margin: 0 auto; padding: 2rem 1.25rem 4rem;
+      line-height: 1.5; color: #1a1a1a; background: #fafafa;
+    }
+    h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+    .sub { color: #666; margin: 0 0 1.5rem; font-size: .92rem; }
+    label { display: block; font-weight: 600; margin: 1rem 0 .35rem; }
+    textarea {
+      width: 100%; min-height: 130px; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: .9rem; padding: .8rem; border: 1px solid #ccc; border-radius: 8px;
+      background: #fff; color: inherit; resize: vertical; word-break: break-all;
+    }
+    .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin: 1rem 0; }
+    button {
+      font: inherit; padding: .55rem 1.1rem; border: 1px solid #ccc;
+      border-radius: 8px; background: #fff; color: inherit; cursor: pointer;
+    }
+    button:hover { border-color: #999; }
+    button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+    label.opt { font-weight: 400; font-size: .88rem; color: #666; display: inline-flex; gap: .35rem; align-items: center; margin: 0 0 0 auto; }
+    .status { font-size: .88rem; min-height: 1.4em; margin-top: .5rem; }
+    .status.err { color: #dc2626; }
+    .status.ok { color: #15803d; }
+    a.back { color: #888; font-size: .85rem; text-decoration: none; }
+    @media (prefers-color-scheme: dark) {
+      body { color: #e6e6e6; background: #111; }
+      .sub, label.opt { color: #aaa; }
+      textarea, button { background: #1c1c1c; border-color: #333; }
+    }
+  </style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; Tools</a>
+  <h1>Base64 Encoder / Decoder</h1>
+  <p class="sub">UTF-8 safe, so emoji and non-Latin text round-trip correctly. Runs entirely in your browser.</p>
+
+  <label for="plain">Text</label>
+  <textarea id="plain" placeholder="Plain text" spellcheck="false"></textarea>
+
+  <div class="row">
+    <button class="primary" id="encode">Encode &darr;</button>
+    <button class="primary" id="decode">Decode &uarr;</button>
+    <button id="copy">Copy Base64</button>
+    <label class="opt"><input type="checkbox" id="urlsafe"> URL-safe</label>
+  </div>
+
+  <label for="b64">Base64</label>
+  <textarea id="b64" placeholder="Base64" spellcheck="false"></textarea>
+  <div class="status" id="status"></div>
+
+  <script>
+    const plain = document.getElementById('plain');
+    const b64 = document.getElementById('b64');
+    const status = document.getElementById('status');
+    const urlsafe = document.getElementById('urlsafe');
+
+    function setStatus(msg, kind) {
+      status.textContent = msg;
+      status.className = 'status' + (kind ? ' ' + kind : '');
+    }
+
+    function encode(str) {
+      // Encode UTF-8 bytes to base64 (btoa only handles Latin-1).
+      const bytes = new TextEncoder().encode(str);
+      let bin = '';
+      for (const b of bytes) bin += String.fromCharCode(b);
+      let out = btoa(bin);
+      if (urlsafe.checked) out = out.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      return out;
+    }
+
+    function decode(str) {
+      let s = str.trim().replace(/-/g, '+').replace(/_/g, '/');
+      while (s.length % 4) s += '=';
+      const bin = atob(s);
+      const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+      return new TextDecoder().decode(bytes);
+    }
+
+    document.getElementById('encode').onclick = () => {
+      try {
+        b64.value = encode(plain.value);
+        setStatus('Encoded ✓', 'ok');
+      } catch (e) {
+        setStatus('Encode failed: ' + e.message, 'err');
+      }
+    };
+
+    document.getElementById('decode').onclick = () => {
+      try {
+        plain.value = decode(b64.value);
+        setStatus('Decoded ✓', 'ok');
+      } catch (e) {
+        setStatus('Invalid Base64: ' + e.message, 'err');
+      }
+    };
+
+    document.getElementById('copy').onclick = async () => {
+      if (!b64.value) return;
+      try {
+        await navigator.clipboard.writeText(b64.value);
+        setStatus('Copied Base64 to clipboard ✓', 'ok');
+      } catch {
+        setStatus('Could not access clipboard', 'err');
+      }
+    };
+  </script>
+</body>
+</html>
