@@ -44,13 +44,13 @@ GA_MEASUREMENT_ID = os.environ.get("GA_MEASUREMENT_ID", "")
 
 def ga_snippet() -> str:
     return f"""<!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id={GA_MEASUREMENT_ID}"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){{dataLayer.push(arguments);}}
-    gtag('js', new Date());
-    gtag('config', '{GA_MEASUREMENT_ID}');
-  </script>"""
+<script async src="https://www.googletagmanager.com/gtag/js?id={GA_MEASUREMENT_ID}"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){{dataLayer.push(arguments);}}
+  gtag('js', new Date());
+  gtag('config', '{GA_MEASUREMENT_ID}');
+</script>"""
 
 
 def inject_ga(page: str) -> str:
@@ -63,7 +63,8 @@ def inject_ga(page: str) -> str:
         return page
     if "</head>" not in page:
         return page
-    return page.replace("</head>", f"  {ga_snippet()}\n</head>", 1)
+    snippet = "\n".join("  " + line for line in ga_snippet().splitlines())
+    return page.replace("</head>", f"{snippet}\n</head>", 1)
 
 
 class MetaParser(HTMLParser):
