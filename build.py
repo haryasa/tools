@@ -27,6 +27,9 @@ ROOT = Path(__file__).resolve().parent
 # Tool pages live here; the generated index/colophon live at the repo root.
 TOOLS_DIR = ROOT / "tools"
 
+# Repo the footer "view source" link points to.
+REPO_URL = "https://github.com/haryasa/tools"
+
 
 class MetaParser(HTMLParser):
     """Pull the <title> text and <meta name="description"> out of a page."""
@@ -186,7 +189,7 @@ def render_index(tools: list[dict[str, str | None]]) -> str:
     </ul>
     <footer>
       Each tool is a single static HTML file with no dependencies &mdash;
-      <a href="https://github.com">view source</a> or save any file to use it offline.
+      <a href="{REPO_URL}">view source</a> or save any file to use it offline.
     </footer>
   </div>
   <script>
