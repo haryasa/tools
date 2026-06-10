@@ -24,8 +24,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
-# Files that live at the root but are not themselves tools.
-EXCLUDE = {"index.html", "colophon.html", "_template.html"}
+# Tool pages live here; the generated index/colophon live at the repo root.
+TOOLS_DIR = ROOT / "tools"
 
 
 class MetaParser(HTMLParser):
@@ -78,17 +78,16 @@ def git_dates(filename: str) -> tuple[str | None, str | None]:
 
 def collect_tools() -> list[dict[str, str | None]]:
     tools: list[dict[str, str | None]] = []
-    for path in sorted(ROOT.glob("*.html")):
-        if path.name in EXCLUDE:
-            continue
+    for path in sorted(TOOLS_DIR.glob("*.html")):
+        relpath = f"tools/{path.name}"
         parser = MetaParser()
         parser.feed(path.read_text(encoding="utf-8"))
         title = (parser.title or path.stem).strip()
         description = (parser.description or "").strip()
-        created, updated = git_dates(path.name)
+        created, updated = git_dates(relpath)
         tools.append(
             {
-                "file": path.name,
+                "file": relpath,
                 "title": title,
                 "description": description,
                 "created": created,

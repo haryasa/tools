@@ -11,12 +11,22 @@ Two purposes:
 2. **Code reference** — each file is a complete, copy-pasteable example of how to
    do one thing in plain HTML/CSS/JS.
 
+## Layout
+
+```
+tools/            standalone tool pages (one .html each)
+_template.html    starting point for a new tool
+build.py          generates index.html + colophon.html
+index.html        generated: searchable listing      (git-ignored)
+colophon.html     generated: created/updated dates    (git-ignored)
+```
+
 ## How it works
 
-- Every tool lives at the repo root as a standalone `*.html` file.
-- `build.py` scans those files, reads each one's `<title>` and
+- Every tool lives in `tools/` as a standalone `*.html` file.
+- `build.py` scans that directory, reads each file's `<title>` and
   `<meta name="description">`, and generates `index.html` (a searchable listing)
-  and `colophon.html` (creation/update dates from git history).
+  and `colophon.html` (creation/update dates from git history) at the repo root.
 - A GitHub Actions workflow runs `build.py` and deploys to GitHub Pages on every
   push to `main`.
 
@@ -24,9 +34,9 @@ Two purposes:
 
 ## Adding a tool
 
-1. Copy the template:
+1. Copy the template into `tools/`:
    ```sh
-   cp _template.html my-tool.html
+   cp _template.html tools/my-tool.html
    ```
 2. Edit `my-tool.html`. Set the `<title>` (its name in the index) and the
    `<meta name="description">` (the one-line blurb). Keep everything in the one
@@ -40,9 +50,9 @@ Two purposes:
 
 ## Starter tools
 
-- `json-formatter.html` — pretty-print, minify, and validate JSON
-- `uuid-generator.html` — generate v4 UUIDs in bulk
-- `base64.html` — UTF-8-safe Base64 encode/decode
+- `tools/json-formatter.html` — pretty-print, minify, and validate JSON
+- `tools/uuid-generator.html` — generate v4 UUIDs in bulk
+- `tools/base64.html` — UTF-8-safe Base64 encode/decode
 
 ## One-time GitHub Pages setup
 
