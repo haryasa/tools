@@ -183,11 +183,11 @@
 <body>
   <a class="back" href="../index.html">&larr; Tools</a>
   <h1>Markdown Preview</h1>
-  <p class="sub">Type or paste Markdown on the left, read it rendered on the right. Hit <strong>Hide source</strong> for a calm, full-width reading view. Everything runs locally — nothing is uploaded.</p>
+  <p class="sub">Type or paste Markdown on the left, read it rendered on the right. Hit <strong>Reading mode</strong> for a calm, full-width reading view. Everything runs locally — nothing is uploaded.</p>
 
   <div class="row">
     <button class="primary" id="sample">Load sample</button>
-    <button id="reading">Hide source</button>
+    <button id="reading">Reading mode</button>
     <button id="download">Download .html</button>
     <button id="print">Print</button>
     <button id="clear">Clear</button>
@@ -537,7 +537,7 @@ ${out.innerHTML}
     readingBtn.onclick = () => {
       const reading = panes.classList.toggle('reading');
       document.body.classList.toggle('reading-mode', reading);
-      readingBtn.textContent = reading ? 'Show source' : 'Hide source';
+      readingBtn.textContent = reading ? 'Exit reading mode' : 'Reading mode';
       if (reading) out.parentElement.scrollTop = 0;
     };
 
