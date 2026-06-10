@@ -6,7 +6,12 @@
   <title>Markdown Preview</title>
   <meta name="description" content="Render Markdown into a clean, readable document with a live GitHub-style preview.">
   <style>
-    :root { color-scheme: light dark; }
+    :root {
+      color-scheme: light dark;
+      --reading-size: 1.22rem;
+      /* Faint, desaturated paper grain (inline SVG — no external asset). */
+      --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    }
     * { box-sizing: border-box; }
     body {
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -29,10 +34,75 @@
 
     .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: stretch; }
     @media (max-width: 760px) { .panes { grid-template-columns: 1fr; } }
-    /* Reading mode: hide the editor and give the preview the full width. */
+    /* Reading controls appear only once the source is hidden. */
+    .reading-only { display: none; }
+    body.reading-mode .reading-only {
+      display: inline-flex; gap: .35rem; align-items: center;
+      margin-left: .15rem; padding-left: .65rem;
+      border-left: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+    }
+    .reading-only button { padding: .5rem .7rem; min-width: 2.5rem; }
+    #fontToggle { min-width: 3.5rem; }
+
+    /* ---------- Reading mode: an editorial, book-like environment for long-form reading ---------- */
     .panes.reading { grid-template-columns: 1fr; }
     .panes.reading textarea { display: none; }
-    .panes.reading .preview { padding: 1.5rem clamp(1.5rem, 8vw, 5rem); }
+    .panes.reading .preview {
+      --paper: #fbf8f1;
+      --ink: #2a241c;
+      --reading-accent: #1d4ed8;
+      border: 0; border-radius: 16px;
+      background-color: var(--paper);
+      background-image: var(--grain);
+      color: var(--ink);
+      padding: clamp(1.75rem, 5vw, 4.5rem) clamp(1.25rem, 6vw, 4rem);
+      box-shadow: 0 1px 2px rgba(40,30,15,.05), 0 22px 50px -28px rgba(40,30,15,.28);
+    }
+    .panes.reading .md {
+      max-width: 66ch; margin: 0 auto;
+      font-family: "Iowan Old Style", "Palatino Linotype", "URW Palladio L",
+                   Palatino, "Book Antiqua", Charter, "Bitstream Charter",
+                   Cambria, Georgia, serif;
+      font-size: var(--reading-size); line-height: 1.75; letter-spacing: .003em;
+    }
+    .panes.reading.sans .md {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.7;
+    }
+    /* Comfortable paragraphs: soft wrapping, hyphenation, old-style figures. */
+    .panes.reading .md p, .panes.reading .md li {
+      text-wrap: pretty; hyphens: auto; -webkit-hyphens: auto;
+      font-variant-numeric: oldstyle-nums proportional-nums;
+    }
+    .panes.reading.sans .md p, .panes.reading.sans .md li { font-variant-numeric: normal; }
+    .panes.reading .md p { margin: 0 0 1.15em; }
+    .panes.reading .md h1, .panes.reading .md h2,
+    .panes.reading .md h3, .panes.reading .md h4 {
+      border: 0; padding: 0; letter-spacing: -.012em; text-wrap: balance; line-height: 1.2;
+    }
+    .panes.reading .md h1 { font-size: 2.3em; margin: .1em 0 .55em; }
+    .panes.reading .md h2 { font-size: 1.6em; margin: 1.9em 0 .5em; }
+    .panes.reading .md h3 { font-size: 1.28em; margin: 1.7em 0 .5em; }
+    .panes.reading .md > :first-child { margin-top: 0; }
+    .panes.reading .md a {
+      color: var(--reading-accent); text-decoration: underline;
+      text-decoration-thickness: 1px; text-underline-offset: .18em;
+      text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+    }
+    .panes.reading .md a:hover { text-decoration-color: currentColor; }
+    .panes.reading .md blockquote {
+      font-style: italic; border-left-width: 3px;
+      color: color-mix(in srgb, var(--ink) 78%, transparent);
+      border-color: color-mix(in srgb, var(--reading-accent) 45%, transparent);
+    }
+    /* A typographic break instead of a hard rule. */
+    .panes.reading .md hr { height: auto; background: none; border: 0; margin: 2.4em 0; text-align: center; }
+    .panes.reading .md hr::before {
+      content: "* * *"; letter-spacing: .55em;
+      color: color-mix(in srgb, var(--ink) 45%, transparent);
+    }
+    /* Keep code and tables on monospace/tabular figures. */
+    .panes.reading .md code, .panes.reading .md pre, .panes.reading .md table { font-variant-numeric: normal; }
 
     textarea {
       width: 100%; min-height: 70vh; font-family: ui-monospace, "SF Mono", Menlo, monospace;
@@ -100,13 +170,20 @@
       .md blockquote { color: #9aa4af; border-color: #30363d; }
       .md pre { background: #0d0d0d; }
       .md kbd { background: #0d0d0d; border-color: #444; }
+      /* Warm, low-glare page for night reading. */
+      .panes.reading .preview {
+        --paper: #16140f; --ink: #e4ddcf; --reading-accent: #7aa2ff;
+        background-image: none;
+        box-shadow: 0 1px 2px rgba(0,0,0,.4), 0 22px 50px -28px rgba(0,0,0,.6);
+      }
+      .panes.reading .md pre { background: #000; }
     }
   </style>
 </head>
 <body>
   <a class="back" href="../index.html">&larr; Tools</a>
   <h1>Markdown Preview</h1>
-  <p class="sub">Type or paste Markdown on the left, read it rendered on the right. Everything runs locally — nothing is uploaded.</p>
+  <p class="sub">Type or paste Markdown on the left, read it rendered on the right. Hit <strong>Hide source</strong> for a calm, full-width reading view. Everything runs locally — nothing is uploaded.</p>
 
   <div class="row">
     <button class="primary" id="sample">Load sample</button>
@@ -115,6 +192,11 @@
     <button id="download">Download .html</button>
     <button id="print">Print</button>
     <button id="clear">Clear</button>
+    <span class="reading-only" id="readingTools">
+      <button id="textSmaller" title="Smaller text" aria-label="Decrease text size">A&minus;</button>
+      <button id="textLarger" title="Larger text" aria-label="Increase text size">A+</button>
+      <button id="fontToggle" title="Switch between serif and sans">Serif</button>
+    </span>
     <span class="status spacer" id="status"></span>
   </div>
 
@@ -214,8 +296,9 @@
         // Tight items: unwrap a single bare paragraph.
         const single = inner.match(/^<p>([\s\S]*?)<\/p>\s*$/);
         if (single && !/<p>/.test(single[1])) inner = single[1];
-        // Prepend the checkbox after inline processing so it isn't escaped.
-        html += `<li${cls}>${box}${inner}</li>`;
+        // Keep the checkbox inline with the first line, even in loose items.
+        if (box) inner = inner.startsWith('<p>') ? '<p>' + box + inner.slice(3) : box + inner;
+        html += `<li${cls}>${inner}</li>`;
       }
       html += ordered ? '</ol>' : '</ul>';
       return html;
@@ -353,10 +436,15 @@
     document.getElementById('print').onclick = () => {
       const w = window.open('', '_blank');
       w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Print</title>` +
-        `<style>body{font-family:system-ui,sans-serif;line-height:1.65;max-width:46rem;margin:2rem auto;padding:0 1rem;}` +
-        `pre{background:#f3f4f6;padding:1em;border-radius:8px;overflow:auto;}` +
-        `code{font-family:monospace;}table{border-collapse:collapse;}th,td{border:1px solid #ccc;padding:.4em .8em;}` +
-        `blockquote{border-left:.25em solid #d0d7de;color:#57606a;margin:0;padding:.2em 1em;}</style></head><body>` +
+        `<style>@page{margin:2cm;}` +
+        `body{font-family:"Iowan Old Style","Palatino Linotype",Palatino,Charter,Cambria,Georgia,serif;` +
+        `font-size:12pt;line-height:1.65;max-width:62ch;margin:0 auto;color:#1a1a1a;hyphens:auto;}` +
+        `h1,h2,h3,h4{line-height:1.2;text-wrap:balance;}` +
+        `p,li{font-variant-numeric:oldstyle-nums;}` +
+        `pre{background:#f3f4f6;padding:1em;border-radius:8px;overflow:auto;font-family:ui-monospace,monospace;font-size:.85em;}` +
+        `code{font-family:ui-monospace,monospace;}table{border-collapse:collapse;}th,td{border:1px solid #ccc;padding:.4em .8em;}` +
+        `img{max-width:100%;}a{color:#1d4ed8;}` +
+        `blockquote{border-left:3px solid #c9b68a;color:#555;margin:0;padding:.2em 1em;font-style:italic;}</style></head><body>` +
         out.innerHTML + `</body></html>`);
       w.document.close();
       w.focus();
@@ -367,8 +455,40 @@
     const readingBtn = document.getElementById('reading');
     readingBtn.onclick = () => {
       const reading = panes.classList.toggle('reading');
+      document.body.classList.toggle('reading-mode', reading);
       readingBtn.textContent = reading ? 'Show source' : 'Hide source';
+      if (reading) out.parentElement.scrollTop = 0;
     };
+
+    // ---- Reading preferences (persisted, with safe fallbacks) ----
+    const store = {
+      get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch { return d; } },
+      set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+    };
+    const MIN_SIZE = 0.95, MAX_SIZE = 1.6;
+    let readingSize = parseFloat(store.get('md-reading-size', '1.22')) || 1.22;
+
+    function applyReadingSize() {
+      readingSize = Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(readingSize * 100) / 100));
+      out.style.setProperty('--reading-size', readingSize + 'rem');
+      store.set('md-reading-size', readingSize);
+    }
+    document.getElementById('textSmaller').onclick = () => { readingSize -= 0.08; applyReadingSize(); };
+    document.getElementById('textLarger').onclick = () => { readingSize += 0.08; applyReadingSize(); };
+    applyReadingSize();
+
+    const fontToggle = document.getElementById('fontToggle');
+    function applyFont() {
+      const sans = store.get('md-reading-font', 'serif') === 'sans';
+      panes.classList.toggle('sans', sans);
+      fontToggle.textContent = sans ? 'Sans' : 'Serif';
+    }
+    fontToggle.onclick = () => {
+      const sans = !panes.classList.contains('sans');
+      store.set('md-reading-font', sans ? 'sans' : 'serif');
+      applyFont();
+    };
+    applyFont();
 
     document.getElementById('clear').onclick = () => {
       input.value = '';
