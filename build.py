@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import html
 import json
+import os
+import shutil
 import subprocess
 from datetime import datetime
 from html.parser import HTMLParser
@@ -27,8 +29,42 @@ ROOT = Path(__file__).resolve().parent
 # Tool pages live here; the generated index/colophon live at the repo root.
 TOOLS_DIR = ROOT / "tools"
 
-# Repo the footer "view source" link points to.
-REPO_URL = "https://github.com/haryasa/tools"
+# Deploy artifact staged for GitHub Pages (git-ignored).
+SITE_DIR = ROOT / "_site"
+
+# Config comes from the environment so it can be set outside the codebase
+# (e.g. GitHub Actions repository variables). Both have sensible fallbacks.
+#
+#   REPO_URL           footer "view source" link target
+#   GA_MEASUREMENT_ID  Google Analytics (GA4) ID, e.g. "G-XXXXXXXXXX".
+#                      Empty by default, so local builds ship no analytics tag.
+REPO_URL = os.environ.get("REPO_URL", "https://github.com/haryasa/tools")
+GA_MEASUREMENT_ID = os.environ.get("GA_MEASUREMENT_ID", "")
+
+
+def ga_snippet() -> str:
+    return f"""<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id={GA_MEASUREMENT_ID}"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){{dataLayer.push(arguments);}}
+  gtag('js', new Date());
+  gtag('config', '{GA_MEASUREMENT_ID}');
+</script>"""
+
+
+def inject_ga(page: str) -> str:
+    """Insert the Google Analytics tag just before </head>.
+
+    A no-op when GA_MEASUREMENT_ID is unset, so local/test builds stay inert.
+    Applied only to deployed copies in _site/.
+    """
+    if not GA_MEASUREMENT_ID:
+        return page
+    if "</head>" not in page:
+        return page
+    snippet = "\n".join("  " + line for line in ga_snippet().splitlines())
+    return page.replace("</head>", f"{snippet}\n</head>", 1)
 
 
 class MetaParser(HTMLParser):
@@ -252,11 +288,32 @@ def render_colophon(tools: list[dict[str, str | None]]) -> str:
 """
 
 
+def stage_site(index: str, colophon: str) -> None:
+    """Assemble the deploy-ready _site/ directory with the GA tag injected.
+
+    Source tool files are copied verbatim except for the analytics tag added
+    here, so the committed originals stay self-contained and dependency-free.
+    """
+    if SITE_DIR.exists():
+        shutil.rmtree(SITE_DIR)
+    (SITE_DIR / "tools").mkdir(parents=True)
+    for path in TOOLS_DIR.glob("*.html"):
+        page = path.read_text(encoding="utf-8")
+        (SITE_DIR / "tools" / path.name).write_text(inject_ga(page), encoding="utf-8")
+    (SITE_DIR / "index.html").write_text(inject_ga(index), encoding="utf-8")
+    (SITE_DIR / "colophon.html").write_text(inject_ga(colophon), encoding="utf-8")
+
+
 def main() -> None:
     tools = collect_tools()
-    (ROOT / "index.html").write_text(render_index(tools), encoding="utf-8")
-    (ROOT / "colophon.html").write_text(render_colophon(tools), encoding="utf-8")
-    print(f"Built index.html and colophon.html ({len(tools)} tools)")
+    index = render_index(tools)
+    colophon = render_colophon(tools)
+    # Root copies (git-ignored) for local preview with `python -m http.server`.
+    (ROOT / "index.html").write_text(index, encoding="utf-8")
+    (ROOT / "colophon.html").write_text(colophon, encoding="utf-8")
+    # Deploy artifact with the analytics tag stamped into every page.
+    stage_site(index, colophon)
+    print(f"Built index.html + colophon.html and staged _site/ ({len(tools)} tools)")
 
 
 if __name__ == "__main__":

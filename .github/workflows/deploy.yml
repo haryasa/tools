@@ -25,14 +25,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Build index and colophon
+      - name: Build index, colophon, and staged _site/
         run: python build.py
+        env:
+          # Set GA_MEASUREMENT_ID under Settings → Secrets and variables →
+          # Actions → Variables. Empty/unset = no analytics tag injected.
+          GA_MEASUREMENT_ID: ${{ vars.GA_MEASUREMENT_ID }}
+          # Footer "view source" link; derived from the repo automatically.
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
       - uses: actions/configure-pages@v5
-      - name: Stage site files
-        run: |
-          mkdir -p _site/tools
-          cp tools/*.html _site/tools/        # the tools themselves
-          cp index.html colophon.html _site/  # generated landing pages
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

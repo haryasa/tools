@@ -16,9 +16,10 @@ offline, with nothing else from the repo.
 ```
 tools/            one self-contained .html per tool  ← add tools here
 _template.html    starting point for a new tool
-build.py          generates index.html + colophon.html (stdlib only)
+build.py          generates index.html + colophon.html, stages _site/ (stdlib only)
 index.html        GENERATED — do not edit (git-ignored)
 colophon.html     GENERATED — do not edit (git-ignored)
+_site/            GENERATED deploy artifact, GA tag injected — do not edit (git-ignored)
 .github/workflows/deploy.yml   builds + deploys to Pages on push to main
 ```
 
