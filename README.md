@@ -52,3 +52,7 @@ colophon.html     generated: created/updated dates    (git-ignored)
 
 After pushing to GitHub: **Settings → Pages → Build and deployment → Source:
 GitHub Actions**. The included workflow handles the rest.
+
+## License
+
+[MIT](LICENSE) — use, copy, and adapt freely.
