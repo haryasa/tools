@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Markdown Preview</title>
+  <meta name="description" content="Render Markdown into a clean, readable document with a live GitHub-style preview.">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --reading-size: 1.22rem;
+      /* Faint, desaturated paper grain (inline SVG — no external asset). */
+      --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      max-width: 1100px; margin: 0 auto; padding: 2rem 1.25rem 4rem;
+      line-height: 1.5; color: #1a1a1a; background: #fafafa;
+    }
+    h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+    .sub { color: #666; margin: 0 0 1.25rem; font-size: .92rem; }
+    a.back { color: #888; font-size: .85rem; text-decoration: none; }
+
+    .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin: 0 0 1rem; }
+    button {
+      font: inherit; padding: .5rem .9rem; border: 1px solid #ccc;
+      border-radius: 8px; background: #fff; color: inherit; cursor: pointer;
+      display: inline-flex; align-items: center; gap: .42rem;
+    }
+    button svg { width: 1.05em; height: 1.05em; flex: none; opacity: .85; }
+    button:hover { border-color: #999; }
+    button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .spacer { margin-left: auto; }
+    .status { font-size: .85rem; color: #15803d; min-height: 1.2em; }
+
+    .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: stretch; }
+    @media (max-width: 760px) { .panes { grid-template-columns: 1fr; } }
+    /* Reading controls appear only once the source is hidden. */
+    .reading-only { display: none; }
+    body.reading-mode .reading-only {
+      display: inline-flex; gap: .35rem; align-items: center;
+      margin-left: .15rem; padding-left: .65rem;
+      border-left: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+    }
+    .reading-only button { padding: .5rem .7rem; min-width: 2.5rem; }
+    #fontToggle { min-width: 3.5rem; }
+
+    /* ---------- Reading mode: an editorial, book-like environment for long-form reading ---------- */
+    .panes.reading { grid-template-columns: 1fr; }
+    .panes.reading textarea { display: none; }
+    .panes.reading .preview {
+      --paper: #fbf8f1;
+      --ink: #2a241c;
+      --reading-accent: #1d4ed8;
+      border: 0; border-radius: 16px;
+      background-color: var(--paper);
+      background-image: var(--grain);
+      color: var(--ink);
+      padding: clamp(1.75rem, 5vw, 4.5rem) clamp(1.25rem, 6vw, 4rem);
+      box-shadow: 0 1px 2px rgba(40,30,15,.05), 0 22px 50px -28px rgba(40,30,15,.28);
+    }
+    .panes.reading .md {
+      max-width: 66ch; margin: 0 auto;
+      font-family: "Iowan Old Style", "Palatino Linotype", "URW Palladio L",
+                   Palatino, "Book Antiqua", Charter, "Bitstream Charter",
+                   Cambria, Georgia, serif;
+      font-size: var(--reading-size); line-height: 1.75; letter-spacing: .003em;
+    }
+    .panes.reading.sans .md {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.7;
+    }
+    /* Comfortable paragraphs: soft wrapping, hyphenation, old-style figures. */
+    .panes.reading .md p, .panes.reading .md li {
+      text-wrap: pretty; hyphens: auto; -webkit-hyphens: auto;
+      font-variant-numeric: oldstyle-nums proportional-nums;
+    }
+    .panes.reading.sans .md p, .panes.reading.sans .md li { font-variant-numeric: normal; }
+    .panes.reading .md p { margin: 0 0 1.15em; }
+    .panes.reading .md h1, .panes.reading .md h2,
+    .panes.reading .md h3, .panes.reading .md h4 {
+      border: 0; padding: 0; letter-spacing: -.012em; text-wrap: balance; line-height: 1.2;
+    }
+    .panes.reading .md h1 { font-size: 2.3em; margin: .1em 0 .55em; }
+    .panes.reading .md h2 { font-size: 1.6em; margin: 1.9em 0 .5em; }
+    .panes.reading .md h3 { font-size: 1.28em; margin: 1.7em 0 .5em; }
+    .panes.reading .md > :first-child { margin-top: 0; }
+    .panes.reading .md a {
+      color: var(--reading-accent); text-decoration: underline;
+      text-decoration-thickness: 1px; text-underline-offset: .18em;
+      text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+    }
+    .panes.reading .md a:hover { text-decoration-color: currentColor; }
+    .panes.reading .md blockquote {
+      font-style: italic; border-left-width: 3px;
+      color: color-mix(in srgb, var(--ink) 78%, transparent);
+      border-color: color-mix(in srgb, var(--reading-accent) 45%, transparent);
+    }
+    /* A typographic break instead of a hard rule. */
+    .panes.reading .md hr { height: auto; background: none; border: 0; margin: 2.4em 0; text-align: center; }
+    .panes.reading .md hr::before {
+      content: "* * *"; letter-spacing: .55em;
+      color: color-mix(in srgb, var(--ink) 45%, transparent);
+    }
+    /* Keep code and tables on monospace/tabular figures. */
+    .panes.reading .md code, .panes.reading .md pre, .panes.reading .md table { font-variant-numeric: normal; }
+
+    textarea {
+      width: 100%; min-height: 70vh; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: .9rem; padding: .8rem; border: 1px solid #ccc; border-radius: 10px;
+      background: #fff; color: inherit; resize: vertical; tab-size: 2; line-height: 1.55;
+    }
+    .preview {
+      min-height: 70vh; padding: 1.25rem 1.5rem; border: 1px solid #ccc;
+      border-radius: 10px; background: #fff; overflow: auto;
+    }
+
+    /* ---- rendered markdown ---- */
+    .md { font-size: 1rem; line-height: 1.65; word-wrap: break-word; }
+    .md > :first-child { margin-top: 0; }
+    .md > :last-child { margin-bottom: 0; }
+    .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
+      margin: 1.6em 0 .6em; line-height: 1.25; font-weight: 600;
+    }
+    .md h1 { font-size: 1.9em; padding-bottom: .3em; border-bottom: 1px solid #e5e7eb; }
+    .md h2 { font-size: 1.45em; padding-bottom: .3em; border-bottom: 1px solid #e5e7eb; }
+    .md h3 { font-size: 1.2em; }
+    .md h4 { font-size: 1em; }
+    .md h5 { font-size: .9em; }
+    .md h6 { font-size: .85em; color: #666; }
+    .md p { margin: 0 0 1em; }
+    .md a { color: #2563eb; text-decoration: none; }
+    .md a:hover { text-decoration: underline; }
+    .md img { max-width: 100%; border-radius: 6px; }
+    .md ul, .md ol { margin: 0 0 1em; padding-left: 1.6em; }
+    .md li { margin: .25em 0; }
+    .md li > ul, .md li > ol { margin: .25em 0; }
+    .md li.task { list-style: none; margin-left: -1.4em; }
+    .md li.task input { margin-right: .5em; }
+    .md blockquote {
+      margin: 0 0 1em; padding: .2em 1em; color: #57606a;
+      border-left: .25em solid #d0d7de;
+    }
+    .md blockquote > :last-child { margin-bottom: 0; }
+    .md code {
+      font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .88em;
+      background: rgba(127,127,127,.18); padding: .2em .4em; border-radius: 6px;
+    }
+    .md pre {
+      margin: 0 0 1em; padding: 1em; overflow: auto; border-radius: 8px;
+      background: #f3f4f6; line-height: 1.5;
+    }
+    .md pre code { background: none; padding: 0; font-size: .85em; }
+    .md hr { height: 1px; border: 0; background: #d0d7de; margin: 1.5em 0; }
+    .md table { border-collapse: collapse; margin: 0 0 1em; display: block; overflow: auto; }
+    .md th, .md td { border: 1px solid #d0d7de; padding: .45em .8em; }
+    .md th { background: rgba(127,127,127,.1); font-weight: 600; }
+    .md tr:nth-child(2n) td { background: rgba(127,127,127,.05); }
+    .md del { color: #909090; }
+    .md kbd {
+      font-family: ui-monospace, monospace; font-size: .82em; padding: .15em .4em;
+      border: 1px solid #ccc; border-bottom-width: 2px; border-radius: 5px; background: #fafafa;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body { color: #e6e6e6; background: #111; }
+      .sub, .md h6 { color: #aaa; }
+      textarea, button, .preview { background: #1c1c1c; border-color: #333; }
+      .md h1, .md h2 { border-color: #30363d; }
+      .md hr, .md th, .md td { border-color: #30363d; }
+      .md blockquote { color: #9aa4af; border-color: #30363d; }
+      .md pre { background: #0d0d0d; }
+      .md kbd { background: #0d0d0d; border-color: #444; }
+      /* Warm, low-glare page for night reading. */
+      .panes.reading .preview {
+        --paper: #16140f; --ink: #e4ddcf; --reading-accent: #7aa2ff;
+        background-image: none;
+        box-shadow: 0 1px 2px rgba(0,0,0,.4), 0 22px 50px -28px rgba(0,0,0,.6);
+      }
+      .panes.reading .md pre { background: #000; }
+    }
+  </style>
+</head>
+<body>
+  <a class="back" href="../index.html">&larr; Tools</a>
+  <h1>Markdown Preview</h1>
+  <p class="sub">Type or paste Markdown on the left, read it rendered on the right. Hit <strong>Reading mode</strong> for a calm, full-width reading view. Everything runs locally — nothing is uploaded.</p>
+
+  <div class="row">
+    <button class="primary" id="sample">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>Load sample</button>
+    <button id="reading">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5h7a3 3 0 0 1 3 3v11a2.5 2.5 0 0 0-2.5-2.5H2z"/><path d="M22 5h-7a3 3 0 0 0-3 3v11a2.5 2.5 0 0 1 2.5-2.5H22z"/></svg><span id="readingLabel">Reading mode</span></button>
+    <button id="download">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>Download .html</button>
+    <button id="print">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6z"/></svg>Print</button>
+    <button id="clear">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>Clear</button>
+    <span class="reading-only" id="readingTools">
+      <button id="textSmaller" title="Smaller text" aria-label="Decrease text size">A&minus;</button>
+      <button id="textLarger" title="Larger text" aria-label="Increase text size">A+</button>
+      <button id="fontToggle" title="Switch between serif and sans">Serif</button>
+    </span>
+    <span class="status spacer" id="status"></span>
+  </div>
+
+  <div class="panes" id="panes">
+    <textarea id="input" spellcheck="false" placeholder="# Hello&#10;&#10;Write some **Markdown** here…"></textarea>
+    <div class="preview"><div class="md" id="out"></div></div>
+  </div>
+
+  <script>
+    // ---------- Markdown -> HTML (self-contained, no dependencies) ----------
+    function escapeHtml(s) {
+      return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+
+    // Block unsafe URL schemes (javascript:, data:, vbscript:, …) so pasted
+    // Markdown can't smuggle script into the preview, print, or download.
+    // Allows http/https/mailto, relative/fragment URLs, and (for images) data:image.
+    function safeUrl(url, allowDataImage) {
+      // Strip the whitespace/control chars browsers ignore when sniffing a scheme.
+      const probe = url.replace(/[\u0000-\u0020]/g, '').toLowerCase();
+      if (!/^[a-z][a-z0-9+.-]*:/.test(probe)) return url;   // relative or fragment
+      if (/^(?:https?|mailto):/.test(probe)) return url;
+      if (allowDataImage && /^data:image\//.test(probe)) return url;
+      return '#';
+    }
+
+    // Inline formatting: code spans, images, links, emphasis, strikethrough, breaks.
+    function inline(text) {
+      const codes = [];
+      // Pull out code spans first so their contents aren't formatted.
+      text = text.replace(/(`+)([\s\S]*?)\1/g, (m, _t, c) => {
+        codes.push(c.replace(/^ | $/g, ''));
+        return '' + (codes.length - 1) + '';
+      });
+      text = escapeHtml(text);
+      // Images: ![alt](src "title")
+      text = text.replace(/!\[([^\]]*)\]\(\s*([^)\s]+)(?:\s+&quot;([^&]*)&quot;)?\s*\)/g,
+        (m, alt, src, title) => `<img src="${safeUrl(src, true)}" alt="${alt}"${title ? ` title="${title}"` : ''}>`);
+      // Links: [text](href "title")
+      text = text.replace(/\[([^\]]+)\]\(\s*([^)\s]+)(?:\s+&quot;([^&]*)&quot;)?\s*\)/g,
+        (m, t, href, title) => `<a href="${safeUrl(href)}"${title ? ` title="${title}"` : ''}>${t}</a>`);
+      // Autolinks: <https://…>
+      text = text.replace(/&lt;((?:https?|mailto):[^\s&]+)&gt;/g, (m, u) => `<a href="${u}">${u}</a>`);
+      // Bold, then italic, then strikethrough.
+      text = text.replace(/\*\*([^\s][\s\S]*?[^\s]|\S)\*\*/g, '<strong>$1</strong>')
+                 .replace(/__([^\s][\s\S]*?[^\s]|\S)__/g, '<strong>$1</strong>');
+      text = text.replace(/\*([^\s*][\s\S]*?[^\s*]|[^\s*])\*/g, '<em>$1</em>')
+                 .replace(/(^|[\s(])_([^\s_][\s\S]*?[^\s_]|[^\s_])_(?=$|[\s).,!?])/g, '$1<em>$2</em>');
+      text = text.replace(/~~([\s\S]+?)~~/g, '<del>$1</del>');
+      // Hard line breaks: two trailing spaces or a backslash.
+      text = text.replace(/( {2,}|\\)\n/g, '<br>\n');
+      // Restore code spans.
+      text = text.replace(/(\d+)/g, (m, i) => `<code>${escapeHtml(codes[i])}</code>`);
+      return text;
+    }
+
+    const RE_LIST = /^(\s*)([-+*]|\d+[.)])\s+/;
+    const RE_HR = /^ {0,3}([-*_])(\s*\1){2,}\s*$/;
+    const RE_FENCE = /^(\s*)(`{3,}|~{3,})(.*)$/;
+    const RE_HEAD = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
+
+    function isBlockStart(l) {
+      return /^\s*$/.test(l) || RE_FENCE.test(l) || RE_HEAD.test(l) ||
+             /^\s*>/.test(l) || RE_LIST.test(l) || RE_HR.test(l);
+    }
+
+    function splitRow(row) {
+      row = row.trim().replace(/^\|/, '').replace(/\|$/, '');
+      const cells = []; let cur = '';
+      for (let k = 0; k < row.length; k++) {
+        if (row[k] === '\\' && row[k + 1] === '|') { cur += '|'; k++; }
+        else if (row[k] === '|') { cells.push(cur); cur = ''; }
+        else cur += row[k];
+      }
+      cells.push(cur);
+      return cells.map(c => c.trim());
+    }
+
+    function renderList(lines) {
+      const nonBlank = lines.filter(l => /\S/.test(l));
+      const base = Math.min(...nonBlank.map(l => l.match(/^(\s*)/)[1].length));
+      const firstMarker = nonBlank[0].match(RE_LIST)[2];
+      const ordered = /\d/.test(firstMarker);
+      const startAttr = ordered && !/^0*1[.)]/.test(firstMarker)
+        ? ` start="${parseInt(firstMarker, 10)}"` : '';
+      const items = [];
+      let cur = null;
+      for (const l of lines) {
+        const m = l.match(RE_LIST);
+        if (m && m[1].length === base) {
+          if (cur) items.push(cur);
+          cur = [l.slice(m[0].length)];
+        } else if (cur) {
+          cur.push(l.length >= base ? l.slice(base) : l.trimStart());
+        }
+      }
+      if (cur) items.push(cur);
+
+      let html = ordered ? `<ol${startAttr}>` : '<ul>';
+      for (const itemLines of items) {
+        const task = itemLines[0].match(/^\[([ xX])\]\s+(.*)$/);
+        let cls = '', box = '';
+        if (task) {
+          itemLines[0] = task[2];
+          box = `<input type="checkbox" disabled${task[1].toLowerCase() === 'x' ? ' checked' : ''}> `;
+          cls = ' class="task"';
+        }
+        let inner = blocks(itemLines);
+        // Tight items: unwrap a single bare paragraph.
+        const single = inner.match(/^<p>([\s\S]*?)<\/p>\s*$/);
+        if (single && !/<p>/.test(single[1])) inner = single[1];
+        // Keep the checkbox inline with the first line, even in loose items.
+        if (box) inner = inner.startsWith('<p>') ? '<p>' + box + inner.slice(3) : box + inner;
+        html += `<li${cls}>${inner}</li>`;
+      }
+      html += ordered ? '</ol>' : '</ul>';
+      return html;
+    }
+
+    // Block-level parser. Recurses for blockquotes and list items.
+    function blocks(lines) {
+      let html = '';
+      for (let i = 0; i < lines.length;) {
+        const line = lines[i];
+
+        if (/^\s*$/.test(line)) { i++; continue; }
+
+        // Fenced code block.
+        const fence = line.match(RE_FENCE);
+        if (fence) {
+          const marker = fence[2][0];
+          const lang = fence[3].trim().split(/\s+/)[0];
+          const close = new RegExp('^\\s*' + marker + '{' + fence[2].length + ',}\\s*$');
+          i++;
+          const code = [];
+          while (i < lines.length && !close.test(lines[i])) { code.push(lines[i]); i++; }
+          i++; // skip closing fence
+          html += `<pre><code${lang ? ` class="language-${escapeHtml(lang)}"` : ''}>` +
+                  escapeHtml(code.join('\n')) + '\n</code></pre>';
+          continue;
+        }
+
+        // ATX heading.
+        const h = line.match(RE_HEAD);
+        if (h) { const n = h[1].length; html += `<h${n}>${inline(h[2])}</h${n}>`; i++; continue; }
+
+        // Horizontal rule.
+        if (RE_HR.test(line)) { html += '<hr>'; i++; continue; }
+
+        // Blockquote (collect, strip one level of '>', recurse).
+        if (/^\s*>/.test(line)) {
+          const bq = [];
+          while (i < lines.length && /^\s*>/.test(lines[i])) { bq.push(lines[i].replace(/^\s*>\s?/, '')); i++; }
+          html += `<blockquote>${blocks(bq)}</blockquote>`;
+          continue;
+        }
+
+        // Table (header row + |---|---| separator).
+        if (i + 1 < lines.length && /\|/.test(line) &&
+            /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(lines[i + 1])) {
+          const header = splitRow(line);
+          const align = splitRow(lines[i + 1]).map(c => {
+            const l = c.startsWith(':'), r = c.endsWith(':');
+            return l && r ? 'center' : r ? 'right' : l ? 'left' : '';
+          });
+          i += 2;
+          const body = [];
+          while (i < lines.length && /\S/.test(lines[i]) && /\|/.test(lines[i])) { body.push(splitRow(lines[i])); i++; }
+          const cell = (c, tag, a) => `<${tag}${a ? ` style="text-align:${a}"` : ''}>${inline(c || '')}</${tag}>`;
+          let t = '<table><thead><tr>';
+          header.forEach((c, k) => t += cell(c, 'th', align[k]));
+          t += '</tr></thead>';
+          if (body.length) {
+            t += '<tbody>';
+            for (const r of body) {
+              t += '<tr>';
+              header.forEach((_, k) => t += cell(r[k], 'td', align[k]));
+              t += '</tr>';
+            }
+            t += '</tbody>';
+          }
+          html += t + '</table>';
+          continue;
+        }
+
+        // List (collect contiguous items + their indented/blank continuations).
+        if (RE_LIST.test(line)) {
+          const buf = [];
+          while (i < lines.length) {
+            const l = lines[i];
+            if (/^\s*$/.test(l)) {
+              const n = lines[i + 1];
+              if (n !== undefined && (/^\s+\S/.test(n) || RE_LIST.test(n))) { buf.push(l); i++; continue; }
+              break;
+            }
+            if (RE_LIST.test(l) || /^\s+\S/.test(l)) { buf.push(l); i++; continue; }
+            break;
+          }
+          html += renderList(buf);
+          continue;
+        }
+
+        // Paragraph: consume until a blank line or the start of another block.
+        const para = [];
+        para.push(line); i++;
+        while (i < lines.length && !isBlockStart(lines[i])) { para.push(lines[i]); i++; }
+        html += `<p>${inline(para.join('\n'))}</p>`;
+      }
+      return html;
+    }
+
+    function markdownToHtml(src) {
+      return blocks(src.replace(/\r\n?/g, '\n').split('\n'));
+    }
+
+    // ---------- UI wiring ----------
+    const input = document.getElementById('input');
+    const out = document.getElementById('out');
+    const status = document.getElementById('status');
+    let statusTimer;
+
+    function flash(msg) {
+      status.textContent = msg;
+      clearTimeout(statusTimer);
+      statusTimer = setTimeout(() => (status.textContent = ''), 2000);
+    }
+
+    function render() {
+      out.innerHTML = markdownToHtml(input.value);
+    }
+    input.addEventListener('input', render);
+
+    // ---- Export styling, shared by Print and Download ----
+    // Print-optimized: black-on-white serif, no awkward page breaks inside
+    // blocks, wrapped code, and tidy figures. Used as the Print stylesheet and
+    // embedded as @media print in the downloaded file so both look the same.
+    const PRINT_CSS = `
+      @page { margin: 2cm; }
+      * { box-sizing: border-box; }
+      body {
+        font: 11.5pt/1.55 "Iowan Old Style","Palatino Linotype",Palatino,Charter,Cambria,Georgia,serif;
+        color: #000; background: #fff; margin: 0;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+      }
+      main { max-width: 40rem; margin: 0 auto; hyphens: auto; -webkit-hyphens: auto; }
+      main > :first-child { margin-top: 0; }
+      h1,h2,h3,h4,h5,h6 { line-height: 1.2; text-wrap: balance; break-after: avoid; page-break-after: avoid; }
+      h1 { font-size: 2em; } h2 { font-size: 1.5em; } h3 { font-size: 1.25em; }
+      p { margin: 0 0 .8em; orphans: 2; widows: 2; }
+      p, li { font-variant-numeric: oldstyle-nums; }
+      a { color: #000; text-decoration: underline; }
+      ul, ol { padding-left: 1.4em; } li { margin: .2em 0; }
+      li.task { list-style: none; }
+      img { max-width: 100%; break-inside: avoid; page-break-inside: avoid; }
+      blockquote { border-left: 3px solid #bbb; margin: 0 0 .8em; padding: .2em 1em; color: #333; font-style: italic; break-inside: avoid; }
+      code { font-family: ui-monospace,"SF Mono",Menlo,monospace; font-size: .9em; }
+      pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 6px; padding: .8em 1em; margin: 0 0 .8em; font-size: .82em; white-space: pre-wrap; word-wrap: break-word; break-inside: avoid; page-break-inside: avoid; }
+      pre code { font-size: inherit; }
+      table { border-collapse: collapse; width: 100%; margin: 0 0 .8em; break-inside: avoid; }
+      th, td { border: 1px solid #999; padding: .4em .7em; text-align: left; }
+      th { background: #eee; }
+      hr { border: 0; text-align: center; margin: 1.5em 0; }
+      hr::before { content: "* * *"; letter-spacing: .5em; color: #999; }`;
+
+    // On-screen styling for the exported file — mirrors the editorial reading
+    // view (warm paper, serif, ~66ch measure) so a downloaded doc reads the
+    // same as reading mode, with a warm-dark variant for dark displays.
+    const SCREEN_CSS = `
+      :root { color-scheme: light dark; }
+      * { box-sizing: border-box; }
+      body {
+        --paper:#fbf8f1; --ink:#2a241c; --accent:#1d4ed8;
+        margin: 0; background: var(--paper); color: var(--ink);
+        font-family: "Iowan Old Style","Palatino Linotype","URW Palladio L",Palatino,"Book Antiqua",Charter,"Bitstream Charter",Cambria,Georgia,serif;
+        padding: clamp(2rem,6vw,4.5rem) clamp(1.25rem,6vw,2rem);
+      }
+      main { max-width: 66ch; margin: 0 auto; font-size: 1.2rem; line-height: 1.75; letter-spacing: .003em; }
+      main > :first-child { margin-top: 0; }
+      h1,h2,h3,h4 { line-height: 1.2; letter-spacing: -.012em; text-wrap: balance; margin: 1.9em 0 .5em; }
+      h1 { font-size: 2.3em; margin: .1em 0 .55em; } h2 { font-size: 1.6em; } h3 { font-size: 1.28em; } h4 { font-size: 1.05em; }
+      p { margin: 0 0 1.15em; text-wrap: pretty; hyphens: auto; -webkit-hyphens: auto; }
+      p, li { font-variant-numeric: oldstyle-nums proportional-nums; }
+      a { color: var(--accent); text-decoration: underline; text-underline-offset: .18em; text-decoration-thickness: 1px;
+          text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); }
+      ul, ol { padding-left: 1.5em; margin: 0 0 1.15em; } li { margin: .3em 0; }
+      li.task { list-style: none; } li.task input { margin-right: .5em; }
+      img { max-width: 100%; border-radius: 6px; }
+      blockquote { font-style: italic; margin: 0 0 1.15em; padding: .2em 1em;
+        border-left: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
+        color: color-mix(in srgb, var(--ink) 78%, transparent); }
+      code { font-family: ui-monospace,"SF Mono",Menlo,monospace; font-size: .82em;
+        background: rgba(120,110,90,.16); padding: .2em .4em; border-radius: 6px; font-variant-numeric: normal; }
+      pre { background: #f1ece0; border-radius: 8px; padding: 1em 1.1em; margin: 0 0 1.15em; overflow: auto; font-variant-numeric: normal; }
+      pre code { background: none; padding: 0; font-size: .8em; }
+      table { border-collapse: collapse; margin: 0 0 1.15em; font-variant-numeric: normal; }
+      th, td { border: 1px solid #d8cdb4; padding: .45em .8em; text-align: left; }
+      th { background: rgba(120,110,90,.12); }
+      hr { border: 0; text-align: center; margin: 2.4em 0; }
+      hr::before { content: "* * *"; letter-spacing: .55em; color: color-mix(in srgb, var(--ink) 45%, transparent); }
+      del { color: #9a8f7a; }
+      @media (prefers-color-scheme: dark) {
+        body { --paper:#16140f; --ink:#e4ddcf; --accent:#7aa2ff; }
+        pre { background: #000; } th, td { border-color: #3a352b; } code { background: rgba(255,255,255,.08); }
+      }`;
+
+    const docTitle = () => (out.querySelector('h1')?.textContent || 'Document').trim();
+
+    // A complete, dependency-free document: reading styles on screen, the
+    // shared print stylesheet for paper.
+    function buildDocument() {
+      return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(docTitle())}</title>
+<style>${SCREEN_CSS}</style>
+<style media="print">${PRINT_CSS}</style>
+</head>
+<body>
+<main>
+${out.innerHTML}
+</main>
+</body>
+</html>`;
+    }
+
+    document.getElementById('download').onclick = () => {
+      const slug = docTitle().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'document';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([buildDocument()], { type: 'text/html' }));
+      a.download = slug + '.html';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      flash('Downloaded ✓');
+    };
+
+    document.getElementById('print').onclick = () => {
+      const w = window.open('', '_blank');
+      if (!w) { flash('Pop-up blocked — allow pop-ups to print'); return; }
+      w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">` +
+        `<title>${escapeHtml(docTitle())}</title><style>${PRINT_CSS}</style></head>` +
+        `<body><main>${out.innerHTML}</main></body></html>`);
+      w.document.close();
+      w.focus();
+      w.print();
+    };
+
+    const panes = document.getElementById('panes');
+    const readingBtn = document.getElementById('reading');
+    readingBtn.onclick = () => {
+      const reading = panes.classList.toggle('reading');
+      document.body.classList.toggle('reading-mode', reading);
+      document.getElementById('readingLabel').textContent = reading ? 'Exit reading mode' : 'Reading mode';
+      if (reading) out.parentElement.scrollTop = 0;
+    };
+
+    // ---- Reading preferences (persisted, with safe fallbacks) ----
+    const store = {
+      get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch { return d; } },
+      set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+    };
+    const MIN_SIZE = 0.95, MAX_SIZE = 1.6;
+    let readingSize = parseFloat(store.get('md-reading-size', '1.22')) || 1.22;
+
+    function applyReadingSize() {
+      readingSize = Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(readingSize * 100) / 100));
+      out.style.setProperty('--reading-size', readingSize + 'rem');
+      store.set('md-reading-size', readingSize);
+    }
+    document.getElementById('textSmaller').onclick = () => { readingSize -= 0.08; applyReadingSize(); };
+    document.getElementById('textLarger').onclick = () => { readingSize += 0.08; applyReadingSize(); };
+    applyReadingSize();
+
+    const fontToggle = document.getElementById('fontToggle');
+    function applyFont() {
+      const sans = store.get('md-reading-font', 'serif') === 'sans';
+      panes.classList.toggle('sans', sans);
+      fontToggle.textContent = sans ? 'Sans' : 'Serif';
+    }
+    fontToggle.onclick = () => {
+      const sans = !panes.classList.contains('sans');
+      store.set('md-reading-font', sans ? 'sans' : 'serif');
+      applyFont();
+    };
+    applyFont();
+
+    document.getElementById('clear').onclick = () => {
+      input.value = '';
+      render();
+      if (!panes.classList.contains('reading')) input.focus();
+    };
+
+    const SAMPLE = `# Markdown Preview
+
+A **self-contained** renderer — no build step, no dependencies, runs offline.
+
+## Why it's handy
+
+- Read \`.md\` files as a clean document
+- See your formatting *as you type*
+- Download the rendered document as styled HTML
+
+### A task list
+
+- [x] Headings, **bold**, _italic_, ~~strike~~
+- [x] Nested lists
+  - with sub-items
+  - and \`inline code\`
+- [ ] World domination
+
+> Blockquotes work too, and can contain **formatting**.
+
+### Code
+
+\`\`\`js
+function greet(name) {
+  return \`Hello, \${name}!\`;
+}
+\`\`\`
+
+### A table
+
+| Feature      | Supported | Notes            |
+| ------------ | :-------: | ---------------- |
+| Tables       |     ✅    | GitHub-style     |
+| Task lists   |     ✅    | checkboxes       |
+| Images/links |     ✅    | [example](#)     |
+
+---
+
+That's it — paste your own Markdown to get started.
+`;
+
+    document.getElementById('sample').onclick = () => { input.value = SAMPLE; render(); };
+
+    // Start with the sample so the tool is self-explanatory.
+    input.value = SAMPLE;
+    render();
+  </script>
+</body>
+</html>
