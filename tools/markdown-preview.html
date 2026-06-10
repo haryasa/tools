@@ -217,6 +217,18 @@
       return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     }
 
+    // Block unsafe URL schemes (javascript:, data:, vbscript:, …) so pasted
+    // Markdown can't smuggle script into the preview, print, or download.
+    // Allows http/https/mailto, relative/fragment URLs, and (for images) data:image.
+    function safeUrl(url, allowDataImage) {
+      // Strip the whitespace/control chars browsers ignore when sniffing a scheme.
+      const probe = url.replace(/[\u0000-\u0020]/g, '').toLowerCase();
+      if (!/^[a-z][a-z0-9+.-]*:/.test(probe)) return url;   // relative or fragment
+      if (/^(?:https?|mailto):/.test(probe)) return url;
+      if (allowDataImage && /^data:image\//.test(probe)) return url;
+      return '#';
+    }
+
     // Inline formatting: code spans, images, links, emphasis, strikethrough, breaks.
     function inline(text) {
       const codes = [];
@@ -228,10 +240,10 @@
       text = escapeHtml(text);
       // Images: ![alt](src "title")
       text = text.replace(/!\[([^\]]*)\]\(\s*([^)\s]+)(?:\s+&quot;([^&]*)&quot;)?\s*\)/g,
-        (m, alt, src, title) => `<img src="${src}" alt="${alt}"${title ? ` title="${title}"` : ''}>`);
+        (m, alt, src, title) => `<img src="${safeUrl(src, true)}" alt="${alt}"${title ? ` title="${title}"` : ''}>`);
       // Links: [text](href "title")
       text = text.replace(/\[([^\]]+)\]\(\s*([^)\s]+)(?:\s+&quot;([^&]*)&quot;)?\s*\)/g,
-        (m, t, href, title) => `<a href="${href}"${title ? ` title="${title}"` : ''}>${t}</a>`);
+        (m, t, href, title) => `<a href="${safeUrl(href)}"${title ? ` title="${title}"` : ''}>${t}</a>`);
       // Autolinks: <https://…>
       text = text.replace(/&lt;((?:https?|mailto):[^\s&]+)&gt;/g, (m, u) => `<a href="${u}">${u}</a>`);
       // Bold, then italic, then strikethrough.
