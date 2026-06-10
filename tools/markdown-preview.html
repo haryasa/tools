@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Markdown Preview</title>
+  <meta name="description" content="Render Markdown into a clean, readable document with a live GitHub-style preview.">
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      max-width: 1100px; margin: 0 auto; padding: 2rem 1.25rem 4rem;
+      line-height: 1.5; color: #1a1a1a; background: #fafafa;
+    }
+    h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+    .sub { color: #666; margin: 0 0 1.25rem; font-size: .92rem; }
+    a.back { color: #888; font-size: .85rem; text-decoration: none; }
+
+    .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin: 0 0 1rem; }
+    button {
+      font: inherit; padding: .5rem 1rem; border: 1px solid #ccc;
+      border-radius: 8px; background: #fff; color: inherit; cursor: pointer;
+    }
+    button:hover { border-color: #999; }
+    button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .spacer { margin-left: auto; }
+    .status { font-size: .85rem; color: #15803d; min-height: 1.2em; }
+
+    .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: stretch; }
+    @media (max-width: 760px) { .panes { grid-template-columns: 1fr; } }
+
+    textarea {
+      width: 100%; min-height: 70vh; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: .9rem; padding: .8rem; border: 1px solid #ccc; border-radius: 10px;
+      background: #fff; color: inherit; resize: vertical; tab-size: 2; line-height: 1.55;
+    }
+    .preview {
+      min-height: 70vh; padding: 1.25rem 1.5rem; border: 1px solid #ccc;
+      border-radius: 10px; background: #fff; overflow: auto;
+    }
+
+    /* ---- rendered markdown ---- */
+    .md { font-size: 1rem; line-height: 1.65; word-wrap: break-word; }
+    .md > :first-child { margin-top: 0; }
+    .md > :last-child { margin-bottom: 0; }
+    .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
+      margin: 1.6em 0 .6em; line-height: 1.25; font-weight: 600;
+    }
+    .md h1 { font-size: 1.9em; padding-bottom: .3em; border-bottom: 1px solid #e5e7eb; }
+    .md h2 { font-size: 1.45em; padding-bottom: .3em; border-bottom: 1px solid #e5e7eb; }
+    .md h3 { font-size: 1.2em; }
+    .md h4 { font-size: 1em; }
+    .md h5 { font-size: .9em; }
+    .md h6 { font-size: .85em; color: #666; }
+    .md p { margin: 0 0 1em; }
+    .md a { color: #2563eb; text-decoration: none; }
+    .md a:hover { text-decoration: underline; }
+    .md img { max-width: 100%; border-radius: 6px; }
+    .md ul, .md ol { margin: 0 0 1em; padding-left: 1.6em; }
+    .md li { margin: .25em 0; }
+    .md li > ul, .md li > ol { margin: .25em 0; }
+    .md li.task { list-style: none; margin-left: -1.4em; }
+    .md li.task input { margin-right: .5em; }
+    .md blockquote {
+      margin: 0 0 1em; padding: .2em 1em; color: #57606a;
+      border-left: .25em solid #d0d7de;
+    }
+    .md blockquote > :last-child { margin-bottom: 0; }
+    .md code {
+      font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .88em;
+      background: rgba(127,127,127,.18); padding: .2em .4em; border-radius: 6px;
+    }
+    .md pre {
+      margin: 0 0 1em; padding: 1em; overflow: auto; border-radius: 8px;
+      background: #f3f4f6; line-height: 1.5;
+    }
+    .md pre code { background: none; padding: 0; font-size: .85em; }
+    .md hr { height: 1px; border: 0; background: #d0d7de; margin: 1.5em 0; }
+    .md table { border-collapse: collapse; margin: 0 0 1em; display: block; overflow: auto; }
+    .md th, .md td { border: 1px solid #d0d7de; padding: .45em .8em; }
+    .md th { background: rgba(127,127,127,.1); font-weight: 600; }
+    .md tr:nth-child(2n) td { background: rgba(127,127,127,.05); }
+    .md del { color: #909090; }
+    .md kbd {
+      font-family: ui-monospace, monospace; font-size: .82em; padding: .15em .4em;
+      border: 1px solid #ccc; border-bottom-width: 2px; border-radius: 5px; background: #fafafa;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body { color: #e6e6e6; background: #111; }
+      .sub, .md h6 { color: #aaa; }
+      textarea, button, .preview { background: #1c1c1c; border-color: #333; }
+      .md h1, .md h2 { border-color: #30363d; }
+      .md hr, .md th, .md td { border-color: #30363d; }
+      .md blockquote { color: #9aa4af; border-color: #30363d; }
+      .md pre { background: #0d0d0d; }
+      .md kbd { background: #0d0d0d; border-color: #444; }
+    }
+  </style>
+</head>
+<body>
+  <a class="back" href="../index.html">&larr; Tools</a>
+  <h1>Markdown Preview</h1>
+  <p class="sub">Type or paste Markdown on the left, read it rendered on the right. Everything runs locally — nothing is uploaded.</p>
+
+  <div class="row">
+    <button class="primary" id="sample">Load sample</button>
+    <button id="copyHtml">Copy HTML</button>
+    <button id="download">Download .html</button>
+    <button id="print">Print</button>
+    <button id="clear">Clear</button>
+    <span class="status spacer" id="status"></span>
+  </div>
+
+  <div class="panes">
+    <textarea id="input" spellcheck="false" placeholder="# Hello&#10;&#10;Write some **Markdown** here…"></textarea>
+    <div class="preview"><div class="md" id="out"></div></div>
+  </div>
+
+  <script>
+    // ---------- Markdown -> HTML (self-contained, no dependencies) ----------
+    function escapeHtml(s) {
+      return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+
+    // Inline formatting: code spans, images, links, emphasis, strikethrough, breaks.
+    function inline(text) {
+      const codes = [];
+      // Pull out code spans first so their contents aren't formatted.
+      text = text.replace(/(`+)([\s\S]*?)\1/g, (m, _t, c) => {
+        codes.push(c.replace(/^ | $/g, ''));
+        return '' + (codes.length - 1) + '';
+      });
+      text = escapeHtml(text);
+      // Images: ![alt](src "title")
+      text = text.replace(/!\[([^\]]*)\]\(\s*([^)\s]+)(?:\s+&quot;([^&]*)&quot;)?\s*\)/g,
+        (m, alt, src, title) => `<img src="${src}" alt="${alt}"${title ? ` title="${title}"` : ''}>`);
+      // Links: [text](href "title")
+      text = text.replace(/\[([^\]]+)\]\(\s*([^)\s]+)(?:\s+&quot;([^&]*)&quot;)?\s*\)/g,
+        (m, t, href, title) => `<a href="${href}"${title ? ` title="${title}"` : ''}>${t}</a>`);
+      // Autolinks: <https://…>
+      text = text.replace(/&lt;((?:https?|mailto):[^\s&]+)&gt;/g, (m, u) => `<a href="${u}">${u}</a>`);
+      // Bold, then italic, then strikethrough.
+      text = text.replace(/\*\*([^\s][\s\S]*?[^\s]|\S)\*\*/g, '<strong>$1</strong>')
+                 .replace(/__([^\s][\s\S]*?[^\s]|\S)__/g, '<strong>$1</strong>');
+      text = text.replace(/\*([^\s*][\s\S]*?[^\s*]|[^\s*])\*/g, '<em>$1</em>')
+                 .replace(/(^|[\s(])_([^\s_][\s\S]*?[^\s_]|[^\s_])_(?=$|[\s).,!?])/g, '$1<em>$2</em>');
+      text = text.replace(/~~([\s\S]+?)~~/g, '<del>$1</del>');
+      // Hard line breaks: two trailing spaces or a backslash.
+      text = text.replace(/( {2,}|\\)\n/g, '<br>\n');
+      // Restore code spans.
+      text = text.replace(/(\d+)/g, (m, i) => `<code>${escapeHtml(codes[i])}</code>`);
+      return text;
+    }
+
+    const RE_LIST = /^(\s*)([-+*]|\d+[.)])\s+/;
+    const RE_HR = /^ {0,3}([-*_])(\s*\1){2,}\s*$/;
+    const RE_FENCE = /^(\s*)(`{3,}|~{3,})(.*)$/;
+    const RE_HEAD = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
+
+    function isBlockStart(l) {
+      return /^\s*$/.test(l) || RE_FENCE.test(l) || RE_HEAD.test(l) ||
+             /^\s*>/.test(l) || RE_LIST.test(l) || RE_HR.test(l);
+    }
+
+    function splitRow(row) {
+      row = row.trim().replace(/^\|/, '').replace(/\|$/, '');
+      const cells = []; let cur = '';
+      for (let k = 0; k < row.length; k++) {
+        if (row[k] === '\\' && row[k + 1] === '|') { cur += '|'; k++; }
+        else if (row[k] === '|') { cells.push(cur); cur = ''; }
+        else cur += row[k];
+      }
+      cells.push(cur);
+      return cells.map(c => c.trim());
+    }
+
+    function renderList(lines) {
+      const nonBlank = lines.filter(l => /\S/.test(l));
+      const base = Math.min(...nonBlank.map(l => l.match(/^(\s*)/)[1].length));
+      const firstMarker = nonBlank[0].match(RE_LIST)[2];
+      const ordered = /\d/.test(firstMarker);
+      const startAttr = ordered && !/^0*1[.)]/.test(firstMarker)
+        ? ` start="${parseInt(firstMarker, 10)}"` : '';
+      const items = [];
+      let cur = null;
+      for (const l of lines) {
+        const m = l.match(RE_LIST);
+        if (m && m[1].length === base) {
+          if (cur) items.push(cur);
+          cur = [l.slice(m[0].length)];
+        } else if (cur) {
+          cur.push(l.length >= base ? l.slice(base) : l.trimStart());
+        }
+      }
+      if (cur) items.push(cur);
+
+      let html = ordered ? `<ol${startAttr}>` : '<ul>';
+      for (const itemLines of items) {
+        const task = itemLines[0].match(/^\[([ xX])\]\s+(.*)$/);
+        let cls = '', box = '';
+        if (task) {
+          itemLines[0] = task[2];
+          box = `<input type="checkbox" disabled${task[1].toLowerCase() === 'x' ? ' checked' : ''}> `;
+          cls = ' class="task"';
+        }
+        let inner = blocks(itemLines);
+        // Tight items: unwrap a single bare paragraph.
+        const single = inner.match(/^<p>([\s\S]*?)<\/p>\s*$/);
+        if (single && !/<p>/.test(single[1])) inner = single[1];
+        // Prepend the checkbox after inline processing so it isn't escaped.
+        html += `<li${cls}>${box}${inner}</li>`;
+      }
+      html += ordered ? '</ol>' : '</ul>';
+      return html;
+    }
+
+    // Block-level parser. Recurses for blockquotes and list items.
+    function blocks(lines) {
+      let html = '';
+      for (let i = 0; i < lines.length;) {
+        const line = lines[i];
+
+        if (/^\s*$/.test(line)) { i++; continue; }
+
+        // Fenced code block.
+        const fence = line.match(RE_FENCE);
+        if (fence) {
+          const marker = fence[2][0];
+          const lang = fence[3].trim().split(/\s+/)[0];
+          const close = new RegExp('^\\s*' + marker + '{' + fence[2].length + ',}\\s*$');
+          i++;
+          const code = [];
+          while (i < lines.length && !close.test(lines[i])) { code.push(lines[i]); i++; }
+          i++; // skip closing fence
+          html += `<pre><code${lang ? ` class="language-${escapeHtml(lang)}"` : ''}>` +
+                  escapeHtml(code.join('\n')) + '\n</code></pre>';
+          continue;
+        }
+
+        // ATX heading.
+        const h = line.match(RE_HEAD);
+        if (h) { const n = h[1].length; html += `<h${n}>${inline(h[2])}</h${n}>`; i++; continue; }
+
+        // Horizontal rule.
+        if (RE_HR.test(line)) { html += '<hr>'; i++; continue; }
+
+        // Blockquote (collect, strip one level of '>', recurse).
+        if (/^\s*>/.test(line)) {
+          const bq = [];
+          while (i < lines.length && /^\s*>/.test(lines[i])) { bq.push(lines[i].replace(/^\s*>\s?/, '')); i++; }
+          html += `<blockquote>${blocks(bq)}</blockquote>`;
+          continue;
+        }
+
+        // Table (header row + |---|---| separator).
+        if (i + 1 < lines.length && /\|/.test(line) &&
+            /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(lines[i + 1])) {
+          const header = splitRow(line);
+          const align = splitRow(lines[i + 1]).map(c => {
+            const l = c.startsWith(':'), r = c.endsWith(':');
+            return l && r ? 'center' : r ? 'right' : l ? 'left' : '';
+          });
+          i += 2;
+          const body = [];
+          while (i < lines.length && /\S/.test(lines[i]) && /\|/.test(lines[i])) { body.push(splitRow(lines[i])); i++; }
+          const cell = (c, tag, a) => `<${tag}${a ? ` style="text-align:${a}"` : ''}>${inline(c || '')}</${tag}>`;
+          let t = '<table><thead><tr>';
+          header.forEach((c, k) => t += cell(c, 'th', align[k]));
+          t += '</tr></thead>';
+          if (body.length) {
+            t += '<tbody>';
+            for (const r of body) {
+              t += '<tr>';
+              header.forEach((_, k) => t += cell(r[k], 'td', align[k]));
+              t += '</tr>';
+            }
+            t += '</tbody>';
+          }
+          html += t + '</table>';
+          continue;
+        }
+
+        // List (collect contiguous items + their indented/blank continuations).
+        if (RE_LIST.test(line)) {
+          const buf = [];
+          while (i < lines.length) {
+            const l = lines[i];
+            if (/^\s*$/.test(l)) {
+              const n = lines[i + 1];
+              if (n !== undefined && (/^\s+\S/.test(n) || RE_LIST.test(n))) { buf.push(l); i++; continue; }
+              break;
+            }
+            if (RE_LIST.test(l) || /^\s+\S/.test(l)) { buf.push(l); i++; continue; }
+            break;
+          }
+          html += renderList(buf);
+          continue;
+        }
+
+        // Paragraph: consume until a blank line or the start of another block.
+        const para = [];
+        para.push(line); i++;
+        while (i < lines.length && !isBlockStart(lines[i])) { para.push(lines[i]); i++; }
+        html += `<p>${inline(para.join('\n'))}</p>`;
+      }
+      return html;
+    }
+
+    function markdownToHtml(src) {
+      return blocks(src.replace(/\r\n?/g, '\n').split('\n'));
+    }
+
+    // ---------- UI wiring ----------
+    const input = document.getElementById('input');
+    const out = document.getElementById('out');
+    const status = document.getElementById('status');
+    let statusTimer;
+
+    function flash(msg) {
+      status.textContent = msg;
+      clearTimeout(statusTimer);
+      statusTimer = setTimeout(() => (status.textContent = ''), 2000);
+    }
+
+    function render() {
+      out.innerHTML = markdownToHtml(input.value);
+    }
+    input.addEventListener('input', render);
+
+    document.getElementById('copyHtml').onclick = async () => {
+      try { await navigator.clipboard.writeText(out.innerHTML); flash('HTML copied ✓'); }
+      catch { flash('Could not access clipboard'); }
+    };
+
+    document.getElementById('download').onclick = () => {
+      const doc = `<!DOCTYPE html>\n<html><head><meta charset="utf-8">` +
+        `<title>Markdown</title></head><body>\n${out.innerHTML}\n</body></html>`;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([doc], { type: 'text/html' }));
+      a.download = 'document.html';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      flash('Downloaded ✓');
+    };
+
+    document.getElementById('print').onclick = () => {
+      const w = window.open('', '_blank');
+      w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Print</title>` +
+        `<style>body{font-family:system-ui,sans-serif;line-height:1.65;max-width:46rem;margin:2rem auto;padding:0 1rem;}` +
+        `pre{background:#f3f4f6;padding:1em;border-radius:8px;overflow:auto;}` +
+        `code{font-family:monospace;}table{border-collapse:collapse;}th,td{border:1px solid #ccc;padding:.4em .8em;}` +
+        `blockquote{border-left:.25em solid #d0d7de;color:#57606a;margin:0;padding:.2em 1em;}</style></head><body>` +
+        out.innerHTML + `</body></html>`);
+      w.document.close();
+      w.focus();
+      w.print();
+    };
+
+    document.getElementById('clear').onclick = () => { input.value = ''; render(); input.focus(); };
+
+    const SAMPLE = `# Markdown Preview
+
+A **self-contained** renderer — no build step, no dependencies, runs offline.
+
+## Why it's handy
+
+- Read \`.md\` files as a clean document
+- See your formatting *as you type*
+- Copy or download the rendered HTML
+
+### A task list
+
+- [x] Headings, **bold**, _italic_, ~~strike~~
+- [x] Nested lists
+  - with sub-items
+  - and \`inline code\`
+- [ ] World domination
+
+> Blockquotes work too, and can contain **formatting**.
+
+### Code
+
+\`\`\`js
+function greet(name) {
+  return \`Hello, \${name}!\`;
+}
+\`\`\`
+
+### A table
+
+| Feature      | Supported | Notes            |
+| ------------ | :-------: | ---------------- |
+| Tables       |     ✅    | GitHub-style     |
+| Task lists   |     ✅    | checkboxes       |
+| Images/links |     ✅    | [example](#)     |
+
+---
+
+That's it — paste your own Markdown to get started.
+`;
+
+    document.getElementById('sample').onclick = () => { input.value = SAMPLE; render(); };
+
+    // Start with the sample so the tool is self-explanatory.
+    input.value = SAMPLE;
+    render();
+  </script>
+</body>
+</html>
