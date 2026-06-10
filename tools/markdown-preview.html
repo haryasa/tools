@@ -29,6 +29,10 @@
 
     .panes { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: stretch; }
     @media (max-width: 760px) { .panes { grid-template-columns: 1fr; } }
+    /* Reading mode: hide the editor and give the preview the full width. */
+    .panes.reading { grid-template-columns: 1fr; }
+    .panes.reading textarea { display: none; }
+    .panes.reading .preview { padding: 1.5rem clamp(1.5rem, 8vw, 5rem); }
 
     textarea {
       width: 100%; min-height: 70vh; font-family: ui-monospace, "SF Mono", Menlo, monospace;
@@ -106,6 +110,7 @@
 
   <div class="row">
     <button class="primary" id="sample">Load sample</button>
+    <button id="reading">Hide source</button>
     <button id="copyHtml">Copy HTML</button>
     <button id="download">Download .html</button>
     <button id="print">Print</button>
@@ -113,7 +118,7 @@
     <span class="status spacer" id="status"></span>
   </div>
 
-  <div class="panes">
+  <div class="panes" id="panes">
     <textarea id="input" spellcheck="false" placeholder="# Hello&#10;&#10;Write some **Markdown** here…"></textarea>
     <div class="preview"><div class="md" id="out"></div></div>
   </div>
@@ -358,7 +363,18 @@
       w.print();
     };
 
-    document.getElementById('clear').onclick = () => { input.value = ''; render(); input.focus(); };
+    const panes = document.getElementById('panes');
+    const readingBtn = document.getElementById('reading');
+    readingBtn.onclick = () => {
+      const reading = panes.classList.toggle('reading');
+      readingBtn.textContent = reading ? 'Show source' : 'Hide source';
+    };
+
+    document.getElementById('clear').onclick = () => {
+      input.value = '';
+      render();
+      if (!panes.classList.contains('reading')) input.focus();
+    };
 
     const SAMPLE = `# Markdown Preview
 
