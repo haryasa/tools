@@ -6,10 +6,18 @@ overview and human-facing setup, see [README.md](README.md).
 ## What this is
 
 A collection of small, **single-file HTML tools** served via GitHub Pages. Each
-tool is one self-contained `.html` file with inline CSS and JS — **no
-dependencies, no build step, no framework, no shared assets**. This is a hard
-constraint, not a preference: a tool must work when saved and opened on its own,
-offline, with nothing else from the repo.
+tool is one self-contained `.html` file with inline CSS and JS — **no build
+step, no framework, no bundler, no shared assets**. This is a hard constraint,
+not a preference: a tool must work when saved and opened on its own, with nothing
+else from the repo.
+
+The one relaxation: a tool **may** load a third-party library straight from a CDN
+via `<script src>` / `<link href>` (e.g. PDF.js, Tesseract.js) when reinventing
+it inline would be unreasonable. Such a tool needs a network connection on first
+open and so won't work fully offline — that's the accepted trade-off. Prefer
+dependency-free; reach for a CDN only when the library is the whole point of the
+tool. No npm, no build step, no framework, ever — those are what keep each file
+copy-paste portable.
 
 ## Layout
 
@@ -29,8 +37,10 @@ _site/            GENERATED deploy artifact, GA tag injected — do not edit (gi
 2. Set two things that feed the generated index — get them right:
    - `<title>` → the tool's name in the listing.
    - `<meta name="description" content="...">` → the one-line blurb. One sentence.
-3. Keep everything inline in that one file. Do not add external `<script src>` or
-   `<link href>` to CDNs or sibling files. No npm, no bundler.
+3. Keep everything inline in that one file. Don't link sibling files in the repo,
+   and don't add a build step, bundler, or framework. A CDN `<script src>` /
+   `<link href>` is allowed only when a tool genuinely needs a heavy library
+   (note that it then won't work offline); default to dependency-free.
 4. Keep the navigation back-link: `<a class="back" href="../index.html">`.
 5. Match the existing visual style (system font stack, rounded controls,
    `#2563eb` primary buttons, light/dark via `prefers-color-scheme`). Copying the
@@ -58,5 +68,6 @@ generated `index.html` after building.
 - **Commits:** Conventional Commits (`feat:`, `fix:`, `refactor:`, `docs:`,
   `chore:`). One logical change per commit.
 - **Deploy:** pushing to `main` triggers the Pages workflow; no manual deploy.
-- **Dependencies:** none, anywhere. If a tool seems to need a library, inline a
-  minimal implementation instead.
+- **Dependencies:** prefer none — inline a minimal implementation where it's
+  reasonable. A CDN-loaded library is the only allowed exception, for cases where
+  inlining (e.g. a PDF or OCR engine) is not. No npm, no build step, no framework.

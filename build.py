@@ -224,8 +224,8 @@ def render_index(tools: list[dict[str, str | None]]) -> str:
 {items}
     </ul>
     <footer>
-      Each tool is a single static HTML file with no dependencies &mdash;
-      <a href="{REPO_URL}">view source</a> or save any file to use it offline.
+      Each tool is a single static HTML file, no build step &mdash;
+      <a href="{REPO_URL}">view source</a> or save any file to use it locally.
     </footer>
   </div>
   <script>
@@ -292,7 +292,8 @@ def stage_site(index: str, colophon: str) -> None:
     """Assemble the deploy-ready _site/ directory with the GA tag injected.
 
     Source tool files are copied verbatim except for the analytics tag added
-    here, so the committed originals stay self-contained and dependency-free.
+    here, so the committed originals stay self-contained (any third-party
+    library a tool uses is its own CDN reference, not added by the build).
     """
     if SITE_DIR.exists():
         shutil.rmtree(SITE_DIR)

@@ -1,13 +1,17 @@
 # Tools
 
 A personal collection of small, self-contained HTML tools — each one a single
-static file with no build step, no framework, and no external dependencies.
+static file with no build step and no framework. Most are dependency-free and
+work fully offline; a few load a library straight from a CDN and need a network
+connection on first open. The hard rule is the single file: open the page, or
+save it and use it locally.
 Inspired by [Simon Willison's tools.simonwillison.net](https://tools.simonwillison.net/)
 and his note on [hoarding things you know how to do](https://simonwillison.net/guides/agentic-engineering-patterns/hoard-things-you-know-how-to-do/).
 
 Two purposes:
 
-1. **Quick-grab utilities** — open the page, or save the file and use it offline.
+1. **Quick-grab utilities** — open the page, or save the file and use it locally
+   (offline too, for tools that don't load a CDN library).
 2. **Code reference** — each file is a complete, copy-pasteable example of how to
    do one thing in plain HTML/CSS/JS.
 
@@ -40,7 +44,9 @@ colophon.html     generated: created/updated dates    (git-ignored)
    ```
 2. Edit `my-tool.html`. Set the `<title>` (its name in the index) and the
    `<meta name="description">` (the one-line blurb). Keep everything in the one
-   file so it stays grabbable and works offline.
+   file so it stays grabbable. A CDN `<script src>`/`<link href>` is fine when a
+   tool genuinely needs a library; prefer dependency-free so it also works
+   offline. No build step, no framework.
 3. Rebuild and preview locally:
    ```sh
    python build.py
