@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Markdown Preview</title>
-  <meta name="description" content="Render Markdown into a clean, readable document with a live GitHub-style preview.">
+  <meta name="description" content="Render Markdown into a clean, readable document with a live GitHub-style preview and Mermaid diagrams.">
   <style>
     :root {
       color-scheme: light dark;
@@ -152,6 +152,8 @@
       background: #f3f4f6; line-height: 1.5;
     }
     .md pre code { background: none; padding: 0; font-size: .85em; }
+    .md .mermaid { margin: 0 0 1em; text-align: center; }
+    .md .mermaid svg { max-width: 100%; height: auto; }
     .md hr { height: 1px; border: 0; background: #d0d7de; margin: 1.5em 0; }
     .md table { border-collapse: collapse; margin: 0 0 1em; display: block; overflow: auto; }
     .md th, .md td { border: 1px solid #d0d7de; padding: .45em .8em; }
@@ -185,7 +187,7 @@
 <body>
   <a class="back" href="../index.html">&larr; Tools</a>
   <h1>Markdown Preview</h1>
-  <p class="sub">Type or paste Markdown on the left, read it rendered on the right. Hit <strong>Reading mode</strong> for a calm, full-width reading view. Everything runs locally — nothing is uploaded.</p>
+  <p class="sub">Type or paste Markdown on the left, read it rendered on the right. Hit <strong>Reading mode</strong> for a calm, full-width reading view. Everything runs locally — nothing is uploaded. <code>mermaid</code> code blocks render as diagrams; that one feature loads its renderer from a CDN, so diagrams need a connection on first open.</p>
 
   <div class="row">
     <button class="primary" id="sample">
@@ -340,6 +342,14 @@
           const code = [];
           while (i < lines.length && !close.test(lines[i])) { code.push(lines[i]); i++; }
           i++; // skip closing fence
+          // Mermaid blocks become live diagrams (rendered async after the
+          // preview updates). The <pre> doubles as the fallback shown before
+          // the CDN library loads, when offline, or on a syntax error.
+          if (lang === 'mermaid') {
+            const src = escapeHtml(code.join('\n'));
+            html += `<pre class="mermaid-src" data-mermaid="${src}">${src}</pre>`;
+            continue;
+          }
           html += `<pre><code${lang ? ` class="language-${escapeHtml(lang)}"` : ''}>` +
                   escapeHtml(code.join('\n')) + '\n</code></pre>';
           continue;
@@ -432,8 +442,58 @@
 
     function render() {
       out.innerHTML = markdownToHtml(input.value);
+      renderMermaid();
     }
     input.addEventListener('input', render);
+
+    // ---------- Mermaid diagrams (loaded from a CDN; see the module script) ----------
+    // The module script below assigns window.__mermaid once the library has
+    // loaded and calls renderMermaid(). Everything here degrades gracefully
+    // while the library is absent (still loading, or fully offline): the
+    // diagram source simply stays visible as a code block.
+    const darkMode = () => window.matchMedia('(prefers-color-scheme: dark)').matches;
+    let mermaidGen = 0;
+
+    function initMermaid() {
+      if (!window.__mermaid) return;
+      window.__mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'strict',       // sanitize diagram-supplied markup
+        suppressErrorRendering: true,  // don't inject stray error SVG into <body>
+        theme: darkMode() ? 'dark' : 'default',
+      });
+    }
+
+    // Render each `pre.mermaid-src` placeholder to inline SVG. A generation
+    // token drops results from a stale render when the user keeps typing.
+    async function renderMermaid() {
+      const mermaid = window.__mermaid;
+      if (!mermaid) return;
+      const gen = ++mermaidGen;
+      const nodes = out.querySelectorAll('pre.mermaid-src');
+      let idx = 0;
+      for (const node of nodes) {
+        const src = node.getAttribute('data-mermaid');
+        idx++;
+        let svg;
+        try {
+          ({ svg } = await mermaid.render(`mmd-${gen}-${idx}`, src));
+        } catch {
+          continue; // leave the source <pre> in place as a fallback
+        }
+        if (gen !== mermaidGen) return; // a newer render superseded this one
+        const fig = document.createElement('figure');
+        fig.className = 'mermaid';
+        fig.innerHTML = svg;
+        node.replaceWith(fig);
+      }
+    }
+
+    // Re-theme diagrams when the OS switches between light and dark.
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      initMermaid();
+      render();
+    });
 
     // ---- Export styling, shared by Print and Download ----
     // Print-optimized: black-on-white serif, no awkward page breaks inside
@@ -465,7 +525,9 @@
       th, td { border: 1px solid #999; padding: .4em .7em; text-align: left; }
       th { background: #eee; }
       hr { border: 0; text-align: center; margin: 1.5em 0; }
-      hr::before { content: "* * *"; letter-spacing: .5em; color: #999; }`;
+      hr::before { content: "* * *"; letter-spacing: .5em; color: #999; }
+      .mermaid { margin: 0 0 .8em; text-align: center; break-inside: avoid; page-break-inside: avoid; }
+      .mermaid svg { max-width: 100%; height: auto; }`;
 
     // On-screen styling for the exported file — mirrors the editorial reading
     // view (warm paper, serif, ~66ch measure) so a downloaded doc reads the
@@ -502,6 +564,8 @@
       th { background: rgba(120,110,90,.12); }
       hr { border: 0; text-align: center; margin: 2.4em 0; }
       hr::before { content: "* * *"; letter-spacing: .55em; color: color-mix(in srgb, var(--ink) 45%, transparent); }
+      .mermaid { margin: 0 0 1.15em; text-align: center; }
+      .mermaid svg { max-width: 100%; height: auto; }
       del { color: #9a8f7a; }
       @media (prefers-color-scheme: dark) {
         body { --paper:#16140f; --ink:#e4ddcf; --accent:#7aa2ff; }
@@ -632,6 +696,15 @@ function greet(name) {
 | Task lists   |     ✅    | checkboxes       |
 | Images/links |     ✅    | [example](#)     |
 
+### A diagram
+
+\`\`\`mermaid
+flowchart LR
+  A[Write Markdown] --> B{Fenced as mermaid?}
+  B -->|yes| C[Rendered diagram]
+  B -->|no| D[Code block]
+\`\`\`
+
 ---
 
 That's it — paste your own Markdown to get started.
@@ -642,6 +715,21 @@ That's it — paste your own Markdown to get started.
     // Start with the sample so the tool is self-explanatory.
     input.value = SAMPLE;
     render();
+  </script>
+
+  <!-- Mermaid is the one CDN dependency: too large to inline, and only its
+       diagram blocks need it. Loaded as an ESM module so the rest of the tool
+       stays dependency-free and works offline. -->
+  <script type="module">
+    try {
+      const { default: mermaid } =
+        await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs');
+      window.__mermaid = mermaid;
+      initMermaid();
+      renderMermaid(); // upgrade any diagrams already in the preview
+    } catch {
+      // Offline or CDN blocked: diagrams stay as readable code blocks.
+    }
   </script>
 </body>
 </html>
