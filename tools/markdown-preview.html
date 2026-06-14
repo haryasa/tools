@@ -342,14 +342,10 @@
           const code = [];
           while (i < lines.length && !close.test(lines[i])) { code.push(lines[i]); i++; }
           i++; // skip closing fence
-          // Mermaid blocks become live diagrams (rendered async after the
-          // preview updates). The <pre> doubles as the fallback shown before
-          // the CDN library loads, when offline, or on a syntax error.
-          if (lang === 'mermaid') {
-            const src = escapeHtml(code.join('\n'));
-            html += `<pre class="mermaid-src" data-mermaid="${src}">${src}</pre>`;
-            continue;
-          }
+          // A ```mermaid fence is just a code block here; renderMermaid()
+          // upgrades the resulting code.language-mermaid into a live diagram
+          // after the preview updates (and it stays a readable code block when
+          // the CDN library is absent or the diagram fails to parse).
           html += `<pre><code${lang ? ` class="language-${escapeHtml(lang)}"` : ''}>` +
                   escapeHtml(code.join('\n')) + '\n</code></pre>';
           continue;
@@ -451,8 +447,10 @@
     // loaded and calls renderMermaid(). Everything here degrades gracefully
     // while the library is absent (still loading, or fully offline): the
     // diagram source simply stays visible as a code block.
-    const darkMode = () => window.matchMedia('(prefers-color-scheme: dark)').matches;
+    // One MediaQueryList drives both the initial theme and re-theming.
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
     let mermaidGen = 0;
+    const mermaidCache = new Map(); // diagram source -> rendered SVG; cleared on theme change
 
     function initMermaid() {
       if (!window.__mermaid) return;
@@ -460,37 +458,42 @@
         startOnLoad: false,
         securityLevel: 'strict',       // sanitize diagram-supplied markup
         suppressErrorRendering: true,  // don't inject stray error SVG into <body>
-        theme: darkMode() ? 'dark' : 'default',
+        theme: prefersDark.matches ? 'dark' : 'default',
       });
     }
 
-    // Render each `pre.mermaid-src` placeholder to inline SVG. A generation
-    // token drops results from a stale render when the user keeps typing.
+    // Upgrade each `code.language-mermaid` block (emitted by the generic
+    // fenced-code path) to inline SVG. Rendered SVGs are cached by source so
+    // unchanged diagrams aren't re-laid-out on every keystroke, and a
+    // generation token drops results from a stale render when the user keeps
+    // typing. A block that fails or hasn't rendered stays a readable code block.
     async function renderMermaid() {
       const mermaid = window.__mermaid;
       if (!mermaid) return;
       const gen = ++mermaidGen;
-      const nodes = out.querySelectorAll('pre.mermaid-src');
-      let idx = 0;
-      for (const node of nodes) {
-        const src = node.getAttribute('data-mermaid');
-        idx++;
-        let svg;
-        try {
-          ({ svg } = await mermaid.render(`mmd-${gen}-${idx}`, src));
-        } catch {
-          continue; // leave the source <pre> in place as a fallback
+      const nodes = [...out.querySelectorAll('code.language-mermaid')];
+      for (const [idx, node] of nodes.entries()) {
+        const src = node.textContent;
+        let svg = mermaidCache.get(src);
+        if (svg === undefined) {
+          try {
+            ({ svg } = await mermaid.render(`mmd-${gen}-${idx}`, src));
+          } catch {
+            continue; // leave the code block in place as a fallback
+          }
+          if (gen !== mermaidGen) return; // a newer render superseded this one
+          mermaidCache.set(src, svg);
         }
-        if (gen !== mermaidGen) return; // a newer render superseded this one
         const fig = document.createElement('figure');
         fig.className = 'mermaid';
         fig.innerHTML = svg;
-        node.replaceWith(fig);
+        node.parentElement.replaceWith(fig); // swap out the wrapping <pre>
       }
     }
 
     // Re-theme diagrams when the OS switches between light and dark.
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    prefersDark.addEventListener('change', () => {
+      mermaidCache.clear();
       initMermaid();
       render();
     });
