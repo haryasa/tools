@@ -114,7 +114,14 @@
         <option value="4">4</option>
       </select>
     </label>
+    <label class="opt">Rounding
+      <select id="rounding">
+        <option value="penny" selected>Penny-accurate</option>
+        <option value="exact">Exact (full precision)</option>
+      </select>
+    </label>
   </div>
+  <p class="hint">Penny-accurate rounds each day to the chosen decimals and spreads leftover units across the earliest days, so an item's daily amounts sum exactly to its amount.</p>
   <div class="row">
     <button class="primary" id="generate">Generate report</button>
     <button id="export" disabled>Export CSV</button>
@@ -150,9 +157,27 @@
       return new Date(ms).toISOString().slice(0, 10);
     }
 
+    // Split `amount` into `days` per-day values, each rounded to `dp` decimals,
+    // so the values sum exactly to amount (rounded to dp). Leftover minor units
+    // are spread one-per-day across the earliest days. Works for negatives too.
+    function splitPennies(amount, days, dp) {
+      const scale = Math.pow(10, dp);
+      const totalMinor = Math.round(amount * scale);
+      const base = Math.trunc(totalMinor / days);
+      let rem = totalMinor - base * days; // |rem| < days, same sign as remainder
+      const step = rem >= 0 ? 1 : -1;
+      let extra = Math.abs(rem);
+      const out = new Array(days);
+      for (let i = 0; i < days; i++) {
+        out[i] = (base + (extra > 0 ? step : 0)) / scale;
+        if (extra > 0) extra--;
+      }
+      return out;
+    }
+
     // items: [{ name, amount(string), start(string), end(string) }]
     // returns { map: Map<dateKey,{total,parts:[{name,daily}]}>, names:[], errors:[] }
-    function distribute(items, inclusive) {
+    function distribute(items, inclusive, dp, penny) {
       const map = new Map();
       const names = [];
       const errors = [];
@@ -175,8 +200,9 @@
         }
 
         names.push(label);
-        const daily = amount / days;
+        const amounts = penny ? splitPennies(amount, days, dp) : null;
         for (let d = 0; d < days; d++) {
+          const daily = penny ? amounts[d] : amount / days;
           const key = isoFromMs(start + d * DAY);
           let cell = map.get(key);
           if (!cell) { cell = { total: 0, parts: [] }; map.set(key, cell); }
@@ -255,16 +281,26 @@
       setStatus('Loaded ' + added + ' row' + (added === 1 ? '' : 's') + ' ✓', 'ok');
     };
 
-    document.getElementById('decimals').onchange = () => { if (lastReport) render(); };
+    // Recompute when an option that affects the numbers changes (penny-accurate
+    // distribution depends on the decimals and boundary), but only if a report
+    // is already on screen so options don't fire an error before Generate.
+    const recompute = () => { if (lastReport) run(); };
+    document.getElementById('decimals').onchange = recompute;
+    document.getElementById('rounding').onchange = recompute;
+    document.getElementById('boundary').onchange = recompute;
 
-    document.getElementById('generate').onclick = () => {
+    document.getElementById('generate').onclick = run;
+
+    function run() {
       const items = readRows();
       if (!items.length) {
         lastReport = null; output.innerHTML = ''; exportBtn.disabled = true;
         return setStatus('Add at least one item to generate a report.', 'err');
       }
       const inclusive = document.getElementById('boundary').value === 'inclusive';
-      const { map, names, errors } = distribute(items, inclusive);
+      const dp = parseInt(document.getElementById('decimals').value, 10);
+      const penny = document.getElementById('rounding').value === 'penny';
+      const { map, names, errors } = distribute(items, inclusive, dp, penny);
       const rows = buildReport(map);
 
       if (!rows.length) {
