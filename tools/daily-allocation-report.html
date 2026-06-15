@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Daily Allocation Report</title>
+  <meta name="description" content="Spread amounts evenly across date ranges and total them per day, then export to Excel — e.g. daily revenue from bookings.">
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      max-width: 960px; margin: 0 auto; padding: 2rem 1.25rem 4rem;
+      line-height: 1.5; color: #1a1a1a; background: #fafafa;
+    }
+    h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1.05rem; margin: 2rem 0 .5rem; }
+    .sub { color: #666; margin: 0 0 1.5rem; font-size: .92rem; }
+    .hint { color: #666; font-size: .85rem; margin: .35rem 0 0; }
+    .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin: 1rem 0; }
+    button {
+      font: inherit; padding: .55rem 1.1rem; border: 1px solid #ccc;
+      border-radius: 8px; background: #fff; color: inherit; cursor: pointer;
+    }
+    button:hover { border-color: #999; }
+    button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+    button.icon { padding: .3rem .55rem; line-height: 1; color: #b91c1c; }
+    label.opt { font-size: .9rem; color: #555; display: flex; align-items: center; gap: .4rem; }
+    select, input[type=text], input[type=number], input[type=date] {
+      font: inherit; font-size: .9rem; padding: .4rem .5rem; border: 1px solid #ccc;
+      border-radius: 6px; background: #fff; color: inherit;
+    }
+    textarea {
+      width: 100%; min-height: 96px; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: .88rem; padding: .7rem .8rem; border: 1px solid #ccc; border-radius: 8px;
+      background: #fff; color: inherit; resize: vertical;
+    }
+    table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+    th, td { border: 1px solid #ddd; padding: .45rem .55rem; text-align: left; vertical-align: top; }
+    th { background: #f0f0f0; font-weight: 600; }
+    td.num, th.num { text-align: right; white-space: nowrap; }
+    #inputTable input[type=text] { width: 100%; min-width: 8rem; }
+    #inputTable input[type=number] { width: 100%; min-width: 6rem; text-align: right; }
+    #inputTable input[type=date] { width: 100%; min-width: 9rem; }
+    #inputTable td { padding: .3rem .35rem; }
+    .total-row td { font-weight: 700; background: #f7f7f7; }
+    .status { font-size: .88rem; min-height: 1.4em; margin-top: .75rem; white-space: pre-wrap; }
+    .status.ok { color: #15803d; }
+    .status.err { color: #dc2626; }
+    .scroll { overflow-x: auto; }
+    a.back { color: #888; font-size: .85rem; text-decoration: none; }
+    @media (prefers-color-scheme: dark) {
+      body { color: #e6e6e6; background: #111; }
+      .sub, .hint, label.opt { color: #aaa; }
+      textarea, button, select, input { background: #1c1c1c; border-color: #333; }
+      th { background: #222; }
+      td, th { border-color: #333; }
+      .total-row td { background: #1a1a1a; }
+      button.icon { color: #f87171; }
+    }
+  </style>
+</head>
+<body>
+  <a class="back" href="../index.html">&larr; Tools</a>
+  <h1>Daily Allocation Report</h1>
+  <p class="sub">
+    Spread each item's amount evenly across the days in its date range, then total
+    every item per day. Generic by design — for a <em>daily revenue report</em>, an
+    Item is a booking and the Amount is its value.
+  </p>
+
+  <h2>Items</h2>
+  <div class="scroll">
+    <table id="inputTable">
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th class="num">Amount</th>
+          <th>Start</th>
+          <th>End</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="inputBody"></tbody>
+    </table>
+  </div>
+  <div class="row">
+    <button id="addRow">+ Add row</button>
+    <button id="clearRows">Clear all</button>
+  </div>
+
+  <h2>Bulk paste</h2>
+  <textarea id="paste" spellcheck="false"
+    placeholder="One item per line — name, amount, start, end&#10;Acme stay, 300, 2026-06-01, 2026-06-03&#10;Booking B, 100, 2026-06-02, 2026-06-03"></textarea>
+  <p class="hint">Format: <code>name, amount, start (YYYY-MM-DD), end (YYYY-MM-DD)</code>. Rows are appended to the table above.</p>
+  <div class="row">
+    <button id="loadPaste">Load rows from paste</button>
+  </div>
+
+  <h2>Options</h2>
+  <div class="row">
+    <label class="opt">End boundary
+      <select id="boundary">
+        <option value="inclusive" selected>Inclusive (count end day)</option>
+        <option value="exclusive">Exclusive (skip end day)</option>
+      </select>
+    </label>
+    <label class="opt">Decimals
+      <select id="decimals">
+        <option value="0">0</option>
+        <option value="1">1</option>
+        <option value="2" selected>2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+      </select>
+    </label>
+  </div>
+  <div class="row">
+    <button class="primary" id="generate">Generate report</button>
+    <button id="export" disabled>Export CSV</button>
+  </div>
+  <div class="status" id="status"></div>
+
+  <div id="output"></div>
+
+  <script>
+    const inputBody = document.getElementById('inputBody');
+    const status = document.getElementById('status');
+    const output = document.getElementById('output');
+    const exportBtn = document.getElementById('export');
+
+    let lastReport = null; // { rows: [{key, total, parts}], names: [], decimals }
+
+    // ---- Generalized engine (domain-agnostic) ----------------------------
+
+    // Parse a bare ISO date (YYYY-MM-DD) as UTC midnight to avoid DST drift.
+    function parseDate(str) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test((str || '').trim())) return null;
+      const ms = Date.parse(str.trim() + 'T00:00:00Z');
+      return Number.isNaN(ms) ? null : ms;
+    }
+
+    const DAY = 86400000;
+
+    function dayCount(start, end, inclusive) {
+      return Math.round((end - start) / DAY) + (inclusive ? 1 : 0);
+    }
+
+    function isoFromMs(ms) {
+      return new Date(ms).toISOString().slice(0, 10);
+    }
+
+    // items: [{ name, amount(string), start(string), end(string) }]
+    // returns { map: Map<dateKey,{total,parts:[{name,daily}]}>, names:[], errors:[] }
+    function distribute(items, inclusive) {
+      const map = new Map();
+      const names = [];
+      const errors = [];
+
+      items.forEach((it, i) => {
+        const label = it.name && it.name.trim() ? it.name.trim() : '(unnamed)';
+        const amount = parseFloat(it.amount);
+        const start = parseDate(it.start);
+        const end = parseDate(it.end);
+        const where = 'Row ' + (i + 1) + ' (' + label + '): ';
+
+        if (Number.isNaN(amount)) { errors.push(where + 'amount is not a number.'); return; }
+        if (start === null) { errors.push(where + 'start date is invalid (use YYYY-MM-DD).'); return; }
+        if (end === null) { errors.push(where + 'end date is invalid (use YYYY-MM-DD).'); return; }
+
+        const days = dayCount(start, end, inclusive);
+        if (days <= 0) {
+          errors.push(where + (inclusive ? 'end is before start.' : 'range covers zero days (exclusive end ≤ start).'));
+          return;
+        }
+
+        names.push(label);
+        const daily = amount / days;
+        for (let d = 0; d < days; d++) {
+          const key = isoFromMs(start + d * DAY);
+          let cell = map.get(key);
+          if (!cell) { cell = { total: 0, parts: [] }; map.set(key, cell); }
+          cell.total += daily;
+          cell.parts.push({ name: label, daily });
+        }
+      });
+
+      return { map, names, errors };
+    }
+
+    function buildReport(map) {
+      return [...map.keys()].sort().map(key => {
+        const cell = map.get(key);
+        return { key, total: cell.total, parts: cell.parts };
+      });
+    }
+
+    // ---- Input table -----------------------------------------------------
+
+    function addRow(name = '', amount = '', start = '', end = '') {
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><input type="text" class="f-name" placeholder="Booking name"></td>' +
+        '<td><input type="number" class="f-amount" step="any" placeholder="0"></td>' +
+        '<td><input type="date" class="f-start"></td>' +
+        '<td><input type="date" class="f-end"></td>' +
+        '<td><button class="icon" title="Remove row" aria-label="Remove row">✕</button></td>';
+      tr.querySelector('.f-name').value = name;
+      tr.querySelector('.f-amount').value = amount;
+      tr.querySelector('.f-start').value = start;
+      tr.querySelector('.f-end').value = end;
+      tr.querySelector('.icon').onclick = () => tr.remove();
+      inputBody.appendChild(tr);
+      return tr;
+    }
+
+    function readRows() {
+      return [...inputBody.querySelectorAll('tr')].map(tr => ({
+        name: tr.querySelector('.f-name').value,
+        amount: tr.querySelector('.f-amount').value,
+        start: tr.querySelector('.f-start').value,
+        end: tr.querySelector('.f-end').value,
+      })).filter(r => r.name.trim() || r.amount.trim() || r.start || r.end);
+    }
+
+    function setStatus(msg, kind) {
+      status.textContent = msg;
+      status.className = 'status' + (kind ? ' ' + kind : '');
+    }
+
+    // ---- Actions ---------------------------------------------------------
+
+    document.getElementById('addRow').onclick = () => addRow();
+
+    document.getElementById('clearRows').onclick = () => {
+      inputBody.innerHTML = '';
+      addRow();
+      lastReport = null;
+      output.innerHTML = '';
+      exportBtn.disabled = true;
+      setStatus('');
+    };
+
+    document.getElementById('loadPaste').onclick = () => {
+      const text = document.getElementById('paste').value;
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      if (!lines.length) return setStatus('Nothing to load — the paste box is empty.', 'err');
+      let added = 0;
+      for (const line of lines) {
+        const parts = line.split(',').map(s => s.trim());
+        addRow(parts[0] || '', parts[1] || '', parts[2] || '', parts[3] || '');
+        added++;
+      }
+      document.getElementById('paste').value = '';
+      setStatus('Loaded ' + added + ' row' + (added === 1 ? '' : 's') + ' ✓', 'ok');
+    };
+
+    document.getElementById('decimals').onchange = () => { if (lastReport) render(); };
+
+    document.getElementById('generate').onclick = () => {
+      const items = readRows();
+      if (!items.length) {
+        lastReport = null; output.innerHTML = ''; exportBtn.disabled = true;
+        return setStatus('Add at least one item to generate a report.', 'err');
+      }
+      const inclusive = document.getElementById('boundary').value === 'inclusive';
+      const { map, names, errors } = distribute(items, inclusive);
+      const rows = buildReport(map);
+
+      if (!rows.length) {
+        lastReport = null; output.innerHTML = ''; exportBtn.disabled = true;
+        return setStatus('No valid rows to report.\n' + errors.join('\n'), 'err');
+      }
+
+      // Stable, de-duplicated list of names for the matrix columns.
+      const uniqueNames = [...new Set(names)];
+      lastReport = { rows, names: uniqueNames };
+      render();
+
+      const ok = uniqueNames.length + ' item' + (uniqueNames.length === 1 ? '' : 's') +
+        ' across ' + rows.length + ' day' + (rows.length === 1 ? '' : 's') + ' ✓';
+      setStatus(errors.length ? ok + '\nSkipped:\n' + errors.join('\n') : ok,
+        errors.length ? 'err' : 'ok');
+    };
+
+    function render() {
+      const dp = parseInt(document.getElementById('decimals').value, 10);
+      const fmt = n => n.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
+      const { rows } = lastReport;
+
+      let grand = 0;
+      let html = '<h2>Report</h2><div class="scroll"><table><thead><tr>' +
+        '<th>Date</th><th class="num">Daily total</th><th>Breakdown</th></tr></thead><tbody>';
+      for (const r of rows) {
+        grand += r.total;
+        const breakdown = r.parts.map(p => p.name + ': ' + fmt(p.daily)).join(', ');
+        html += '<tr><td>' + r.key + '</td><td class="num">' + fmt(r.total) +
+          '</td><td>' + escapeHtml(breakdown) + '</td></tr>';
+      }
+      html += '<tr class="total-row"><td>Grand total</td><td class="num">' + fmt(grand) +
+        '</td><td></td></tr></tbody></table></div>';
+      output.innerHTML = html;
+      exportBtn.disabled = false;
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+
+    // ---- CSV export ------------------------------------------------------
+
+    function csvField(v) {
+      const s = String(v);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }
+
+    document.getElementById('export').onclick = () => {
+      if (!lastReport) return;
+      const dp = parseInt(document.getElementById('decimals').value, 10);
+      const round = n => Number(n.toFixed(dp));
+      const { rows, names } = lastReport;
+
+      const header = ['Date', ...names, 'Total'];
+      const lines = [header.map(csvField).join(',')];
+
+      for (const r of rows) {
+        const byName = {};
+        for (const p of r.parts) byName[p.name] = (byName[p.name] || 0) + p.daily;
+        const cells = [r.key,
+          ...names.map(n => n in byName ? round(byName[n]) : ''),
+          round(r.total)];
+        lines.push(cells.map(csvField).join(','));
+      }
+
+      const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'daily-allocation-report.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setStatus('Exported daily-allocation-report.csv ✓', 'ok');
+    };
+
+    // Start with one empty row.
+    addRow();
+  </script>
+</body>
+</html>
