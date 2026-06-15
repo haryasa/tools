@@ -316,7 +316,7 @@
 
       if (!rows.length) return reset('No valid rows to report.\n' + errors.join('\n'), 'err');
 
-      lastReport = { rows, names: uniqueNames, dp };
+      lastReport = { rows, names: uniqueNames, dp, penny };
       render();
 
       const ok = plural(uniqueNames.length, 'item') + ' across ' + plural(rows.length, 'day') + ' ✓';
@@ -356,8 +356,10 @@
 
     document.getElementById('export').onclick = () => {
       if (!lastReport) return;
-      const { rows, names, dp } = lastReport;
-      const round = n => Number(n.toFixed(dp));
+      const { rows, names, dp, penny } = lastReport;
+      // Penny mode already rounds to dp (toFixed clears float artifacts); exact
+      // mode keeps full precision so daily cells still sum to their total.
+      const round = penny ? n => Number(n.toFixed(dp)) : n => n;
 
       const header = ['Date', ...names, 'Total'];
       const lines = [header.map(csvField).join(',')];
