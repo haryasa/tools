@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Daily Allocation Report</title>
-  <meta name="description" content="Spread amounts evenly across date ranges and total them per day, then export to Excel — e.g. daily revenue from bookings.">
+  <meta name="description" content="Spread amounts evenly across date ranges and total them per day, then export to CSV — e.g. daily revenue from bookings.">
   <style>
     :root { color-scheme: light dark; }
     * { box-sizing: border-box; }
@@ -136,8 +136,13 @@
     const status = document.getElementById('status');
     const output = document.getElementById('output');
     const exportBtn = document.getElementById('export');
+    const boundarySel = document.getElementById('boundary');
+    const decimalsSel = document.getElementById('decimals');
+    const roundingSel = document.getElementById('rounding');
 
-    let lastReport = null; // { rows: [{key, total, parts}], names: [], decimals }
+    let lastReport = null; // { rows: [{key, total, parts}], names: [], dp }
+
+    const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
 
     // ---- Generalized engine (domain-agnostic) ----------------------------
 
@@ -215,11 +220,12 @@
       return { map, names, errors };
     }
 
-    function buildReport(map) {
-      return [...map.keys()].sort().map(key => {
-        const cell = map.get(key);
-        return { key, total: cell.total, parts: cell.parts };
-      });
+    // Sort days chronologically and pair them with the stable, de-duplicated
+    // list of names used for the matrix columns.
+    function buildReport(map, names) {
+      const rows = [...map].sort((a, b) => a[0] < b[0] ? -1 : 1)
+        .map(([key, cell]) => ({ key, total: cell.total, parts: cell.parts }));
+      return { rows, names: [...new Set(names)] };
     }
 
     // ---- Input table -----------------------------------------------------
@@ -232,10 +238,11 @@
         '<td><input type="date" class="f-start"></td>' +
         '<td><input type="date" class="f-end"></td>' +
         '<td><button class="icon" title="Remove row" aria-label="Remove row">✕</button></td>';
-      tr.querySelector('.f-name').value = name;
-      tr.querySelector('.f-amount').value = amount;
-      tr.querySelector('.f-start').value = start;
-      tr.querySelector('.f-end').value = end;
+      const [nameI, amountI, startI, endI] = tr.querySelectorAll('input');
+      nameI.value = name;
+      amountI.value = amount;
+      startI.value = start;
+      endI.value = end;
       tr.querySelector('.icon').onclick = () => tr.remove();
       inputBody.appendChild(tr);
       return tr;
@@ -255,6 +262,14 @@
       status.className = 'status' + (kind ? ' ' + kind : '');
     }
 
+    // Clear any rendered report and show an optional status message.
+    function reset(msg, kind) {
+      lastReport = null;
+      output.innerHTML = '';
+      exportBtn.disabled = true;
+      setStatus(msg || '', kind);
+    }
+
     // ---- Actions ---------------------------------------------------------
 
     document.getElementById('addRow').onclick = () => addRow();
@@ -262,10 +277,7 @@
     document.getElementById('clearRows').onclick = () => {
       inputBody.innerHTML = '';
       addRow();
-      lastReport = null;
-      output.innerHTML = '';
-      exportBtn.disabled = true;
-      setStatus('');
+      reset('');
     };
 
     document.getElementById('loadPaste').onclick = () => {
@@ -279,51 +291,42 @@
         added++;
       }
       document.getElementById('paste').value = '';
-      setStatus('Loaded ' + added + ' row' + (added === 1 ? '' : 's') + ' ✓', 'ok');
+      setStatus('Loaded ' + plural(added, 'row') + ' ✓', 'ok');
     };
 
     // Recompute when an option that affects the numbers changes (penny-accurate
     // distribution depends on the decimals and boundary), but only if a report
     // is already on screen so options don't fire an error before Generate.
     const recompute = () => { if (lastReport) run(); };
-    document.getElementById('decimals').onchange = recompute;
-    document.getElementById('rounding').onchange = recompute;
-    document.getElementById('boundary').onchange = recompute;
+    decimalsSel.onchange = recompute;
+    roundingSel.onchange = recompute;
+    boundarySel.onchange = recompute;
 
     document.getElementById('generate').onclick = run;
 
     function run() {
       const items = readRows();
-      if (!items.length) {
-        lastReport = null; output.innerHTML = ''; exportBtn.disabled = true;
-        return setStatus('Add at least one item to generate a report.', 'err');
-      }
-      const inclusive = document.getElementById('boundary').value === 'inclusive';
-      const dp = parseInt(document.getElementById('decimals').value, 10);
-      const penny = document.getElementById('rounding').value === 'penny';
+      if (!items.length) return reset('Add at least one item to generate a report.', 'err');
+
+      const inclusive = boundarySel.value === 'inclusive';
+      const dp = parseInt(decimalsSel.value, 10);
+      const penny = roundingSel.value === 'penny';
       const { map, names, errors } = distribute(items, inclusive, dp, penny);
-      const rows = buildReport(map);
+      const { rows, names: uniqueNames } = buildReport(map, names);
 
-      if (!rows.length) {
-        lastReport = null; output.innerHTML = ''; exportBtn.disabled = true;
-        return setStatus('No valid rows to report.\n' + errors.join('\n'), 'err');
-      }
+      if (!rows.length) return reset('No valid rows to report.\n' + errors.join('\n'), 'err');
 
-      // Stable, de-duplicated list of names for the matrix columns.
-      const uniqueNames = [...new Set(names)];
-      lastReport = { rows, names: uniqueNames };
+      lastReport = { rows, names: uniqueNames, dp };
       render();
 
-      const ok = uniqueNames.length + ' item' + (uniqueNames.length === 1 ? '' : 's') +
-        ' across ' + rows.length + ' day' + (rows.length === 1 ? '' : 's') + ' ✓';
+      const ok = plural(uniqueNames.length, 'item') + ' across ' + plural(rows.length, 'day') + ' ✓';
       setStatus(errors.length ? ok + '\nSkipped:\n' + errors.join('\n') : ok,
         errors.length ? 'err' : 'ok');
     };
 
     function render() {
-      const dp = parseInt(document.getElementById('decimals').value, 10);
+      const { rows, dp } = lastReport;
       const fmt = n => n.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
-      const { rows } = lastReport;
 
       let grand = 0;
       let html = '<h2>Report</h2><div class="scroll"><table><thead><tr>' +
@@ -353,9 +356,8 @@
 
     document.getElementById('export').onclick = () => {
       if (!lastReport) return;
-      const dp = parseInt(document.getElementById('decimals').value, 10);
+      const { rows, names, dp } = lastReport;
       const round = n => Number(n.toFixed(dp));
-      const { rows, names } = lastReport;
 
       const header = ['Date', ...names, 'Total'];
       const lines = [header.map(csvField).join(',')];
