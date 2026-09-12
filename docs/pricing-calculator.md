@@ -2,8 +2,10 @@
 
 ## 1. Goal
 
-A single-file HTML tool, `tools/pricing-calculator.html`, for a guesthouse of
-**six identical units**, priced as **one unit type**. It lets the owner:
+A single-file HTML tool, `tools/pricing-calculator.html`, for a guesthouse or
+similar property with **one or more unit types**. All units of a type share one
+rate; types share one set of pricing rules and differ only in their base rate,
+their floor, and optionally their length-of-stay discounts. It lets the owner:
 
 1. **Quote** a direct booking: price breakdown, negotiation range, PBJT, guest total.
 2. **View a price calendar**: nightly rate, minimum stay, and OTA rate for a date range.
@@ -18,6 +20,7 @@ is deliberately left out.
 
 | Term | Meaning |
 | --- | --- |
+| Unit type | A group of units priced identically, e.g. "Standard" or "Family". Every quote and calendar rate is for one type |
 | Night of D | The stay from date D to D+1. A stay's nights are check-in … checkout − 1. |
 | Nights | checkout − check-in, in days |
 | Lead time | check-in − booking date, in days |
@@ -35,8 +38,9 @@ Defaults, which are also the format used by the settings link:
 ```json
 {
   "version": 1,
-  "base_nightly_rate": 500000,
-  "floor_nightly_rate": 350000,
+  "unit_types": [
+    { "name": "Standard", "base_nightly_rate": 500000, "floor_nightly_rate": 350000 }
+  ],
   "floor_pct_of_rate": 65,
   "rounding_increment": 10000,
   "tax_pct": 10,
@@ -81,11 +85,28 @@ Defaults, which are also the format used by the settings link:
 
 Rules:
 
+- **Unit types**: at least one, with unique names. Each sets its own
+  `base_nightly_rate` and `floor_nightly_rate`. A type may also carry its own
+  `los_tiers`, which **replaces** the top-level ladder for that type entirely —
+  tiers are not merged. A type without one uses the top-level `los_tiers`. That
+  ladder is the type's **LOS ladder** everywhere below. Everything else in the
+  config is shared by all types. For example:
+
+  ```json
+  { "name": "Family", "base_nightly_rate": 750000, "floor_nightly_rate": 500000,
+    "los_tiers": [
+      { "min_nights": 7,  "discount_pct": 5 },
+      { "min_nights": 14, "discount_pct": 15 },
+      { "min_nights": 28, "discount_pct": 25 }
+    ] }
+  ```
+
 - **Seasons**: each month maps to one named season.
 - **Special dates** belong to a specific year. `start` and `end` are the first
   and last nights included. `min_stay` is optional; if it's missing, the
   season's value is used. Special dates must not overlap.
-- **LOS tier**: the tier with the highest `min_nights` ≤ nights; no match → 0%.
+- **LOS tier**: the tier in the type's LOS ladder with the highest
+  `min_nights` ≤ nights; no match → 0%.
 - **Last-minute tier**: the tier with the smallest `max_lead_days` ≥ lead time;
   no match → 0%.
 - **LOS and last-minute do not stack**, and nothing else compounds: the stay
@@ -110,8 +131,8 @@ seven possible start-days.
 Threshold discounts are **rate fences**, not a smooth curve, and the market
 treats them that way. Airbnb's own defaults — 10% weekly, 20% monthly — cliff by
 the same 10 points at the monthly line that these tiers do, just at one fewer
-threshold. So the tiers here step on purpose. Under the defaults, in Normal
-season with a Monday check-in:
+threshold. So the tiers here step on purpose. Under the defaults (the
+`Standard` type), in Normal season with a Monday check-in:
 
 | Nights | Tier | Net |
 | ---: | ---: | ---: |
@@ -128,9 +149,11 @@ Depth is bounded by what a longer stay actually saves. Holding
 revenue-per-calendar-night constant with `preparation_days = 1`, and taking a
 3-night stay as the reference, the turnover-justified discount is 14.3% at 7
 nights, 19.6% at 14, 22.3% at 28, with a 25% asymptote. The 28-night tier sits
-above that because six units can carry a long stay in one unit while the rest
-stay open to short bookings — the extra depth buys occupancy certainty, not
-turnover savings. The floor (§4.2) is what stops it going further.
+above that because a property with several units can carry a long stay in one
+unit while the rest stay open to short bookings — the extra depth buys occupancy
+certainty, not turnover savings. The floor (§4.2) is what stops it going
+further. A type with only one or two units has far less of that slack, which is
+the case for giving it a shallower ladder of its own (§3).
 
 ---
 
@@ -139,16 +162,18 @@ turnover savings. The floor (§4.2) is what stops it going further.
 ### 4.1 Nightly rate
 
 ```text
-night_rate(D) = round_inc(base_nightly_rate × M × W)
+night_rate(T, D) = round_inc(T.base_nightly_rate × M × W)
 
+T = the unit type being priced
 M = special date multiplier if D is in a special date, else D's season multiplier
 W = weekend.multiplier if D's weekday is in weekend.nights, else 1
 
 min_stay(D) = special date min_stay if set, else D's season min_stay
-ota_rate(D) = ceil_inc(night_rate(D) / (1 − (ota_host_fee_pct + ota_tax_absorbed_pct)/100))
+ota_rate(T, D) = ceil_inc(night_rate(T, D) / (1 − (ota_host_fee_pct + ota_tax_absorbed_pct)/100))
 ```
 
-A special date replaces the season. The weekend multiplier still applies on top.
+Only the base rate depends on the type; `M`, `W` and the minimum stay are the
+same for every type. A special date replaces the season. The weekend multiplier still applies on top.
 The calendar shows these exact rates, and quotes sum them, so the calendar and
 quotes always agree.
 
@@ -163,8 +188,8 @@ night worth 600,000 direct needs 810,000 on the channel, not 710,000. It rounds
 
 | # | Step | Formula | Notes |
 | --- | --- | --- | --- |
-| 1 | Gross | `p = Σ night_rate` over the stay's nights | |
-| 2 | Discount | `d = max(los_pct, lm_pct)`, `p = round(p × (1 − d/100))` | `lm_pct` is 0 if last-minute is disabled or this is an extension. An extension counts **only its own nights** for the LOS tier, not the stay so far |
+| 1 | Gross | `p = Σ night_rate(T, D)` over the stay's nights | |
+| 2 | Discount | `d = max(los_pct, lm_pct)`, `p = round(p × (1 − d/100))` | `los_pct` comes from T's LOS ladder. `lm_pct` is 0 if last-minute is disabled or this is an extension. An extension counts **only its own nights** for the LOS tier, not the stay so far |
 | 3 | Round | `p = round_inc(p)` | |
 | 4 | Floor | `net = max(p, stay_floor)` | see below |
 | 5 | PBJT | `tax = round(net × tax_pct/100)` | |
@@ -180,15 +205,15 @@ whole — 14 + 14 as an extension takes 20% twice, against 30% for 28 nights in
 one booking.
 
 ```text
-stay_floor = ceil_inc( Σ max(floor_nightly_rate,
-                             round_inc(night_rate(D) × floor_pct_of_rate/100)) )
+stay_floor = ceil_inc( Σ max(T.floor_nightly_rate,
+                             round_inc(night_rate(T, D) × floor_pct_of_rate/100)) )
 ```
 
 The floor has two halves and takes whichever is higher per night. The **absolute**
-half (`floor_nightly_rate`) is the never-below-this line and binds in Low season.
-The **relative** half (`floor_pct_of_rate`) keeps protection proportional in High
-and Peak, where a flat rupiah floor would sit far below any rate worth
-defending:
+half (the type's `floor_nightly_rate`) is the never-below-this line and binds in
+Low season. The **relative** half (`floor_pct_of_rate`, shared) keeps protection
+proportional in High and Peak, where a flat rupiah floor would sit far below any
+rate worth defending. For the default `Standard` type:
 
 | | Rate | Floor |
 | --- | ---: | ---: |
@@ -198,11 +223,11 @@ defending:
 | Peak weekday | 650,000 | 420,000 |
 | Peak weekend | 720,000 | 470,000 |
 
-Because the deepest LOS tier (30%) is shallower than the relative floor (35%
-off), the floor does not clip the tiers — not even at the bottom of the
+Because the deepest default LOS tier (30%) is shallower than the relative floor
+(35% off), the floor does not clip the tiers — not even at the bottom of the
 negotiation range, where 30% and a further 5% still come to 33.5% off. It binds
 only in Low season, where the absolute half takes over, and on anything deeper
-someone configures later.
+someone configures later, including a type's own ladder (§5.3 warns).
 
 ### 4.3 Negotiation range (pre-tax)
 
@@ -232,12 +257,12 @@ Show tax and guest total for each of the three. For long stays, raising
     season or special date, not just the check-in night;
   - floor applied (show the amount it added);
   - **below a LOS threshold**: the stay is within 4 nights of the next
-    `min_nights` and that tier would price it lower. The 4 is a fixed constant,
+    `min_nights` in the type's LOS ladder and that tier would price it lower. The 4 is a fixed constant,
     deliberately not configurable — it is the width of a nudge a guest will
     accept, not a pricing input. Show both totals and the difference, so the
     owner can hold the line or offer the longer stay deliberately.
 - **Errors** (no quote): missing dates; checkout ≤ check-in; booking date after
-  check-in.
+  check-in; unknown unit type.
 
 ---
 
@@ -247,8 +272,9 @@ One page with three tabs.
 
 ### 5.1 Quote
 
-- **Inputs:** check-in, checkout, booking date (default today), "Extension of
-  current stay" checkbox.
+- **Inputs:** unit type (default the first; hidden when there is only one),
+  check-in, checkout, booking date (default today), "Extension of current stay"
+  checkbox.
 - **Outputs:** the steps from §4.2, showing which discount won at step 2 and the
   one it beat; the negotiation table (§4.3); metrics (§4.4), with total discount
   next to the breakdown; warnings. Per-night rates in a collapsible table (date,
@@ -258,15 +284,20 @@ One page with three tabs.
 
 - **Inputs:** from / to dates (default today → +90 days, max 1 year).
 - **Rows:** date, weekday, season or special-date name, multiplier, weekend
-  (yes/no), nightly rate, OTA rate, minimum stay.
-- **Channel summary:** a copyable plain-text block below the table, listing the
-  nightly rate per season and special date, the LOS tiers, the last-minute
-  tiers, the minimum stays, preparation days, and the tax rate — for typing into
-  Airbnb by hand. Rates in the summary are OTA rates and are **not**
+  (yes/no), then a nightly rate and an OTA rate for **each** unit type, headed
+  by the type's name, then minimum stay. One table shows every type side by
+  side, since only the rates differ between them.
+- **Channel summary:** a copyable plain-text block below the table, with one
+  section per unit type listing its nightly rate per season and special date and
+  its LOS ladder, followed by the shared last-minute tiers, minimum stays,
+  preparation days, and tax rate — for typing into Airbnb by hand. Each type
+  maps to its own listing (Airbnb) or room type (Booking.com), so a type's own
+  ladder exports as-is. Rates in the summary are OTA rates and are **not**
   pre-discounted: the channel applies the exported LOS and last-minute rules
   itself.
 
-All three LOS tiers are exportable. Airbnb's weekly discount covers thresholds
+The default ladder's three tiers are all exportable, as is any per-type ladder
+on the same thresholds. Airbnb's weekly discount covers thresholds
 from one up to three weeks and its monthly covers four up to twelve, and
 Booking.com accepts arbitrary minimum-stay rate plans (or LOS-based pricing over
 connectivity), so 7 / 14 / 28 all fit. Two mismatches do remain, and both belong
@@ -279,7 +310,7 @@ in the block itself because the tool cannot enforce either:
   10% there. The gap opens only when `last_minute.enabled` is on — one more
   reason to leave it off unless the calendar is soft.
 - **The floor cannot be exported.** A channel that stacks its own promotions on
-  top of the exported tiers can land below `floor_nightly_rate`; check the
+  top of the exported tiers can land below a type's `floor_nightly_rate`; check the
   resulting payout before enabling promotions there.
 
 On PBJT: the tax is owed by the accommodation operator, not the platform, and
@@ -294,7 +325,9 @@ to a 10% cap.
 
 ### 5.3 Settings
 
-- A form for every field in §3. Valid changes save automatically to
+- A form for every field in §3. Unit types are a list you can add to, rename
+  and remove; each has an "Own LOS tiers" toggle that, when switched on, starts
+  from a copy of the top-level ladder. Valid changes save automatically to
   `localStorage` under the key `pricing-calculator/config/v1`, except while a
   link config is active (§6).
 - **Copy settings link** puts the current settings in a URL (§6). **Copy quote
@@ -307,18 +340,20 @@ to a 10% cap.
   - multiplier ≤ 0; percentage outside 0–100;
   - `ota_host_fee_pct + ota_tax_absorbed_pct` ≥ 100 (divides by zero in §4.1);
   - `rounding_increment` ≤ 0 (breaks every rounding helper);
-  - `floor_nightly_rate` > `base_nightly_rate` (every stay floors);
+  - `unit_types` empty; a type with an empty or duplicate name;
+  - a type's `floor_nightly_rate` > its `base_nightly_rate` (every stay floors);
   - `seasons` empty; `month_seasons` not exactly 12 entries; a month mapped to
     an unknown season;
-  - duplicate tier thresholds;
-  - a ladder that runs backwards: `discount_pct` must not decrease as
+  - duplicate tier thresholds, in the top-level ladder or any type's;
+  - a ladder — top-level or a type's — that runs backwards: `discount_pct` must not decrease as
     `min_nights` rises, and must not increase as `max_lead_days` rises. Either
     inversion prices a 14-night stay above a 13-night one — the failure §3.1
     exists to rule out, as distinct from the deliberate cliffs it defends.
 - **Warnings** (saved, but flagged):
   - a special date whose `end` is in the past — it silently stops applying;
-  - a LOS tier deeper than `floor_pct_of_rate` allows, which the floor would
-    clip to nothing.
+  - a LOS tier, in any ladder, deeper than `floor_pct_of_rate` allows, which
+    the floor would clip to nothing — name the type when it's a type's own
+    ladder.
 
 There is deliberately **no warning for a longer stay costing less than a shorter
 one** (§3.1). The tiers are fences; the per-quote threshold warning in §4.5 is
@@ -344,10 +379,12 @@ https://…/tools/pricing-calculator.html#s=<base64url payload>
   link config to `localStorage`, and it writes the config as currently edited.
   **Keep mine** discards it and reloads the saved settings. Either choice
   dismisses the banner and restores auto-save; until then the banner stays.
-- A payload that won't decode, won't parse, fails validation (§5.3), or carries
-  an unknown `version` shows an error banner, and the tool falls back to saved
-  settings.
-- Default settings encode to about 1,400 characters. If a link exceeds about 8,000
+- Quote inputs name the unit type by its `name`.
+- A payload that won't decode, won't parse, fails validation (§5.3), carries
+  an unknown `version`, or names a unit type its config doesn't have shows an
+  error banner, and the tool falls back to saved settings.
+- Default settings encode to about 1,400 characters; each extra unit type adds
+  roughly 100, or 260 with its own ladder. If a link exceeds about 8,000
   characters, warn that some browsers and chat apps may truncate it.
 
 ---
@@ -356,9 +393,12 @@ https://…/tools/pricing-calculator.html#s=<base64url payload>
 
 - Follow the repo rules: one file, inline CSS/JS, no dependencies, the template's
   styles.
-- Pricing engine as pure functions with no DOM access: `nightRate(config, date)`,
-  `quote(config, input)`, `validateConfig(config)`, `encodeSettings` /
-  `decodeSettings`. The UI only calls them.
+- Pricing engine as pure functions with no DOM access:
+  `nightRate(config, typeName, date)`, `quote(config, input)` (the input carries
+  the type name), `validateConfig(config)`, `encodeSettings` /
+  `decodeSettings`. Resolve a type's LOS ladder in one helper,
+  `losTiers(config, typeName)`, so no other code checks for the override. The
+  UI only calls them.
 - Handle dates as `YYYY-MM-DD` using UTC date arithmetic to avoid timezone
   off-by-one errors.
 - Round to whole rupiah after every multiplication (§4.2) so results don't drift
@@ -366,7 +406,7 @@ https://…/tools/pricing-calculator.html#s=<base64url payload>
   arithmetic on `x / increment`, not on scaled floats.
 - The examples in §8 are the acceptance tests: `quote()` must reproduce them
   exactly. Ship them as a self-check the file runs on itself: opening the tool
-  at `#selftest` runs all six against `quote()` and renders pass/fail in place
+  at `#selftest` runs all seven against `quote()` and renders pass/fail in place
   of the normal UI. No dependencies, no build step, and the examples cannot rot
   unnoticed.
 
@@ -374,8 +414,10 @@ https://…/tools/pricing-calculator.html#s=<base64url payload>
 
 ## 8. Worked examples (acceptance tests)
 
-All use the defaults from §3, under which `last_minute.enabled` is `false`.
-Example B is the exception and switches it on; it is marked as such.
+All use the defaults from §3 — the single `Standard` type, with
+`last_minute.enabled` `false`. Two examples change one thing, and are marked as
+such: Example B switches last-minute on, and Example G adds a second type with
+its own LOS ladder.
 
 ### A. Month crossing, weekend, LOS
 
@@ -497,6 +539,45 @@ Booked 2026-01-15 · check-in Mon 2026-04-06 · checkout Sun 2026-05-03 · 27 ni
 tier gives 10,080,000. **Warning: 28 nights would price at 10,080,000, 1,040,000
 below this quote.** The quote itself is unchanged.
 
+### G. Second unit type with its own LOS ladder
+
+Example A's stay, priced for an added type. The `Standard` type stays in the
+config unchanged:
+
+```json
+{ "name": "Deluxe", "base_nightly_rate": 600000, "floor_nightly_rate": 400000,
+  "los_tiers": [
+    { "min_nights": 7,  "discount_pct": 5 },
+    { "min_nights": 14, "discount_pct": 15 },
+    { "min_nights": 28, "discount_pct": 25 }
+  ] }
+```
+
+Booked 2026-09-01 · check-in Fri 2026-09-25 · checkout Fri 2026-10-02 · 7 nights · Deluxe
+
+| Step | Calculation | Result |
+| --- | --- | ---: |
+| Gross | Fri–Sat High+weekend 2 × 790,000 (792,000 rounded) + Sun–Wed High 4 × 720,000 + Thu 1 Oct Normal 600,000 | 5,060,000 |
+| Discount | max(Deluxe LOS 7 nights → 5%, last-minute off → 0%) = 5% | 4,807,000 |
+| Round | | 4,810,000 |
+| Floor (3,300,000) | not binding | **4,810,000** |
+| PBJT | | 481,000 |
+| Guest total | | **5,291,000** |
+
+| | Pre-tax | PBJT | Total |
+| --- | ---: | ---: | ---: |
+| Ask | 5,050,000 | 505,000 | 5,555,000 |
+| Target | 4,810,000 | 481,000 | 5,291,000 |
+| Floor | 4,570,000 | 457,000 | 5,027,000 |
+
+Total discount 5% · effective nightly 687,143 · 30-night run-rate 20,614,286 ·
+inventory consumed 8 · revenue per calendar night 601,250 · no warnings.
+
+The floor is 2 × 510,000 + 4 × 470,000 + 400,000: the relative half wins on the
+High nights, and the type's own 400,000 absolute half wins on the Normal night,
+where 65% gives only 390,000. The 5% tier replaces the top-level 10% rather than
+adding to it; the same stay as `Standard` is still Example A.
+
 ---
 
 ## 9. Deliberately not included
@@ -504,9 +585,15 @@ below this quote.** The quote itself is unchanged.
 - **Stored bookings, availability states, occupancy and ALOS analytics.** The
   channel calendars already own availability. Preparation days survive only as
   the inventory-consumed metric.
-- **Per-unit pricing.** All six units are one type and share one rate. Deciding
-  which unit absorbs a long stay is an allocation question the calendar owns,
-  not a pricing one.
+- **Per-unit pricing.** Units of the same type share one rate. Deciding which
+  unit absorbs a long stay is an allocation question the calendar owns, not a
+  pricing one.
+- **Other per-type overrides.** A type sets its base rate, its floor and
+  optionally its LOS ladder — the three that move together when a unit is
+  bigger or smaller. Seasons, special dates, minimum stays, weekend,
+  last-minute, negotiation, tax and OTA settings are shared. If a type ever
+  needs one of those, it gets an optional override the same way `los_tiers`
+  does: replace, don't merge, resolved in one helper.
 - **Season-specific LOS depth.** One ladder, every season — a deliberate
   deviation from the market rather than a reproduction of it, and worth stating
   plainly because it runs the other way. The market discounts a month 35–40%
@@ -514,8 +601,8 @@ below this quote.** The quote itself is unchanged.
   outright on dates that historically sell out. This design does the reverse:
   Low season realises only 24% against the 30% tier, because the absolute floor
   binds (Example C), while Peak realises the full 30%. That is accepted on
-  purpose. Six units mean a long Low-season stay ties up inventory worth keeping
-  loose, and the floor is the instrument that says so. If Low season starts
+  purpose. On a property with few units, a long Low-season stay ties up
+  inventory worth keeping loose, and the floor is the instrument that says so. If Low season starts
   going empty, the fix is a per-season multiplier on tier depth — one field, one
   multiplication in §4.2 step 2 — not a deeper flat ladder.
 - **An extension discount.** Cut. A returning guest gets the length tier their
@@ -526,5 +613,5 @@ below this quote.** The quote itself is unchanged.
 - **A separate commitment discount.** The 28-night tier is the commitment
   discount; a stay long enough to want more is priced by the floor and the
   negotiation range.
-- **Multiple room types**, cleaning and extra-guest fees, deposits,
+- Cleaning and extra-guest fees, deposits,
   cancellations, tax-inclusive (reverse) calculations, per-booking OTA quotes.
