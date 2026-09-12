@@ -192,7 +192,7 @@ One page with three tabs.
 ### 5.3 Settings
 
 - A form for every field in §3. Valid changes save automatically to
-  `localStorage`.
+  `localStorage`, except while a link config is active (§6).
 - **Copy settings link** puts the current settings in a URL (§6). **Copy quote
   link** does the same with the Quote tab's inputs included.
 - A raw JSON textarea, for reading or pasting the whole config as a backup.
@@ -220,9 +220,13 @@ https://…/tools/pricing-calculator.html#s=<base64url payload>
   `TextEncoder`/`TextDecoder` around `btoa`/`atob`; plain `btoa` fails on
   non-ASCII names.
 - **In the fragment, not the query**, so it never reaches the server.
-- **Opening a link never overwrites saved settings.** The link's settings are
-  used for that visit, and a banner offers "Save these settings" or "Keep mine".
-  The banner stays until it's dismissed.
+- **Opening a link never overwrites saved settings.** A link's config lives in
+  memory for that visit only. While it is active, auto-save is off entirely —
+  including edits made in the Settings form — and a banner offers **Save these
+  settings** or **Keep mine**. **Save these settings** is the only path from a
+  link config to `localStorage`, and it writes the config as currently edited.
+  **Keep mine** discards it and reloads the saved settings. Either choice
+  dismisses the banner and restores auto-save; until then the banner stays.
 - A payload that won't decode, won't parse, fails validation (§5.3), or carries
   an unknown `version` shows an error banner, and the tool falls back to saved
   settings.
