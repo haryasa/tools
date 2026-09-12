@@ -2,8 +2,8 @@
 
 ## 1. Goal
 
-A single-file HTML tool, `tools/pricing-calculator.html`, for a **one-unit**
-guesthouse. It lets the owner:
+A single-file HTML tool, `tools/pricing-calculator.html`, for a guesthouse of
+**six identical units**, priced as **one unit type**. It lets the owner:
 
 1. **Quote** a direct booking: price breakdown, negotiation range, PBJT, guest total.
 2. **View a price calendar**: nightly rate, minimum stay, and OTA rate for a date range.
@@ -37,6 +37,7 @@ Defaults, which are also the format used by the settings link:
   "version": 1,
   "base_nightly_rate": 500000,
   "floor_nightly_rate": 350000,
+  "floor_pct_of_rate": 65,
   "rounding_increment": 10000,
   "tax_pct": 10,
   "preparation_days": 1,
@@ -59,10 +60,9 @@ Defaults, which are also the format used by the settings link:
   ],
 
   "los_tiers": [
-    { "min_nights": 7,  "discount_pct": 8 },
-    { "min_nights": 14, "discount_pct": 14 },
-    { "min_nights": 21, "discount_pct": 18 },
-    { "min_nights": 28, "discount_pct": 20 }
+    { "min_nights": 7,  "discount_pct": 10 },
+    { "min_nights": 14, "discount_pct": 20 },
+    { "min_nights": 28, "discount_pct": 30 }
   ],
 
   "last_minute": {
@@ -89,15 +89,40 @@ Rules:
 - **LOS tier**: the tier with the highest `min_nights` ≤ nights; no match → 0%.
 - **Last-minute tier**: the tier with the smallest `max_lead_days` ≥ lead time;
   no match → 0%.
+- **LOS and last-minute do not stack.** The stay takes whichever is deeper
+  (§4.2). Only the extension discount compounds.
 
-### 3.1 Why the LOS tiers stop at 28 nights
+### 3.1 Why the tiers step instead of tapering
 
-A tier at threshold `t` can only be about `(1 − previous discount) ÷ t` deeper
-than the tier before it. Beyond that, a stay one night short of the threshold
-costs more than one at the threshold. At 28 nights that headroom is already down
-to roughly 0.9%, so tiers like "90 nights, 25%" are not possible without that
-inversion. Long stays are priced by the floor and the negotiation range instead
-(see Example C), not by deeper tiers.
+An earlier draft required each tier to be shallow enough that a longer stay
+always costs more than a shorter one. Holding that line caps the deepest tier at
+roughly 16%, which is well below what the market offers for a month, and it
+produced a 21-night tier so tight that the 21st night came out free in five of
+seven possible start-days.
+
+Threshold discounts are **rate fences**, not a smooth curve, and the market
+treats them that way: Airbnb offers exactly two — weekly (7+) and monthly
+(28+) — and its own defaults cliff harder than these. So the tiers here step on
+purpose. Under the defaults, in Normal season with a Monday check-in:
+
+| Nights | Tier | Net |
+| ---: | ---: | ---: |
+| 13 | 10% | 6,030,000 |
+| 14 | 20% | 5,760,000 |
+| 27 | 20% | 11,120,000 |
+| 28 | 30% | 10,080,000 |
+
+Crossing 14 costs 270,000; crossing 28 costs 1,040,000. The tool **warns** when
+a quote sits just below a threshold (§4.5) so the owner sees the exposure and
+decides, rather than silently pricing against it.
+
+Depth is bounded by what a longer stay actually saves. Holding
+revenue-per-calendar-night constant with `preparation_days = 1`, and taking a
+3-night stay as the reference, the turnover-justified discount is 14.3% at 7
+nights, 19.6% at 14, 22.3% at 28, with a 25% asymptote. The 28-night tier sits
+above that because six units can carry a long stay in one unit while the rest
+stay open to short bookings — the extra depth buys occupancy certainty, not
+turnover savings. The floor (§4.2) is what stops it going further.
 
 ---
 
@@ -125,15 +150,35 @@ the direct-booking equivalent.
 | # | Step | Formula | Notes |
 | --- | --- | --- | --- |
 | 1 | Gross | Σ `night_rate` over the stay's nights | |
-| 2 | LOS discount | `p = round(p × (1 − los_pct/100))` | An extension counts **only its own nights**, not the stay so far |
-| 3 | Last-minute | `p = round(p × (1 − lm_pct/100))` | Skipped if disabled or for an extension |
-| 4 | Extension discount | `p = round(p × (1 − extension_discount_pct/100))` | Extension only |
-| 5 | Round | `p = round_inc(p)` | |
-| 6 | Floor | `net = max(p, stay_floor)`, `stay_floor = ceil_inc(nights × floor_nightly_rate)` | |
-| 7 | PBJT | `tax = round(net × tax_pct/100)` | |
-| 8 | Guest total | `net + tax` | |
+| 2 | Discount | `d = max(los_pct, lm_pct)`, `p = round(p × (1 − d/100))` | `lm_pct` is 0 if last-minute is disabled or this is an extension. An extension counts **only its own nights** for the LOS tier, not the stay so far |
+| 3 | Extension discount | `p = round(p × (1 − extension_discount_pct/100))` | Extension only |
+| 4 | Round | `p = round_inc(p)` | |
+| 5 | Floor | `net = max(p, stay_floor)` | see below |
+| 6 | PBJT | `tax = round(net × tax_pct/100)` | |
+| 7 | Guest total | `net + tax` | |
 
-Discounts stack with no cap. The floor is the only safeguard.
+```text
+stay_floor = ceil_inc( Σ max(floor_nightly_rate,
+                             round_inc(night_rate(D) × floor_pct_of_rate/100)) )
+```
+
+The floor has two halves and takes whichever is higher per night. The **absolute**
+half (`floor_nightly_rate`) is the never-below-this line and binds in Low season.
+The **relative** half (`floor_pct_of_rate`) keeps protection proportional in High
+and Peak, where a flat rupiah floor would sit far below any rate worth
+defending:
+
+| | Rate | Floor |
+| --- | ---: | ---: |
+| Low weekday | 450,000 | 350,000 |
+| Normal weekday | 500,000 | 350,000 |
+| High weekday | 600,000 | 390,000 |
+| Peak weekday | 650,000 | 420,000 |
+| Peak weekend | 720,000 | 470,000 |
+
+Because the deepest LOS tier (30%) is shallower than the relative floor (35%
+off), the floor does not clip the tiers; it binds only in Low season, where the
+absolute half takes over, and on anything deeper someone configures later.
 
 ### 4.3 Negotiation range (pre-tax)
 
@@ -151,14 +196,21 @@ Show tax and guest total for each of the three. For long stays, raising
 | Metric | Formula |
 | --- | --- |
 | Effective nightly rate | `round(net / nights)` |
+| Total discount | `round((1 − net / gross) × 100)` %, shown next to the breakdown |
 | 30-night equivalent | `round(net / nights × 30)` |
 | Inventory consumed | `nights + preparation_days` (extension: `nights`, since the prep day just moves to the end) |
 | Revenue per calendar night | `round(net / inventory_consumed)` |
 
 ### 4.5 Warnings and errors
 
-- **Warnings** (the quote is still shown): nights < `min_stay` of the check-in
-  night; floor applied (show the amount it added).
+- **Warnings** (the quote is still shown):
+  - nights < `min_stay` of **any** night in the stay — name the night and its
+    season or special date, not just the check-in night;
+  - floor applied (show the amount it added);
+  - **below a LOS threshold**: the stay is within 4 nights of the next
+    `min_nights` and that tier would price it lower. Show both totals and the
+    difference, so the owner can hold the line or offer the longer stay
+    deliberately.
 - **Errors** (no quote): missing dates; checkout ≤ check-in; booking date after
   check-in.
 
@@ -172,9 +224,10 @@ One page with three tabs.
 
 - **Inputs:** check-in, checkout, booking date (default today), "Extension of
   current stay" checkbox.
-- **Outputs:** the steps from §4.2 with the discount % applied at each; the
-  negotiation table (§4.3); metrics (§4.4); warnings. Per-night rates in a
-  collapsible table (date, weekday, season/special name, rate).
+- **Outputs:** the steps from §4.2, showing which discount won at step 2 and the
+  one it beat; the negotiation table (§4.3); metrics (§4.4), with total discount
+  next to the breakdown; warnings. Per-night rates in a collapsible table (date,
+  weekday, season/special name, rate).
 
 ### 5.2 Calendar
 
@@ -186,8 +239,24 @@ One page with three tabs.
   tiers, the minimum stays, preparation days, and the tax rate — for typing into
   Airbnb by hand. Rates in the summary are OTA rates and are **not**
   pre-discounted: the channel applies the exported LOS and last-minute rules
-  itself. Check how the channel treats PBJT in its fee base before relying on
-  the payout.
+  itself.
+
+Two mismatches to state in the block itself, because the tool cannot enforce
+either:
+
+- **Airbnb expresses only two LOS thresholds**, weekly (7+) and monthly (28+).
+  Export the 7 and 28 tiers; the 14-night tier is direct-only, so a 14–27 night
+  stay is cheaper booked direct. That is intended — it is the one length band
+  where direct undercuts the channel.
+- **The floor cannot be exported.** A channel that stacks its own promotions on
+  top of the exported tiers can land below `floor_nightly_rate`; check the
+  resulting payout before enabling promotions there.
+
+On PBJT: the tax is owed by the accommodation operator, not the platform, and
+Airbnb does not remit it in Indonesia — so an OTA booking still owes PBJT even
+though the guest never saw it as a line item. `ota_rate` does **not** gross up
+for it. Confirm the treatment and the rate with the local bapenda before
+relying on the payout; rates are set per kabupaten/kota up to a 10% cap.
 
 ### 5.3 Settings
 
@@ -198,14 +267,23 @@ One page with three tabs.
 - A raw JSON textarea, for reading or pasting the whole config as a backup.
 - **Reset to defaults.**
 - **Errors** (an invalid config isn't saved; the other tabs keep using the last
-  valid one): overlapping special dates; start after end; multiplier ≤ 0;
-  percentage outside 0–100; month mapped to an unknown season; duplicate tier
-  thresholds.
-- **Warning**: an LOS tier that makes a longer stay cheaper than a shorter one.
-  For each tier with threshold `t` and discount `d`, where the previous tier's
-  discount is `p`: warn if `(t − 1) × (1 − p) > t × (1 − d)`. This check assumes
-  a flat nightly rate. Example: tiers 7+ 5%, 14+ 10%, 28+ 20% warn at 28, because
-  27 nights × 0.90 = 24.3 costs more than 28 × 0.80 = 22.4.
+  valid one):
+  - overlapping special dates; start after end; an unparseable date;
+  - multiplier ≤ 0; percentage outside 0–100;
+  - `ota_host_fee_pct` ≥ 100 (divides by zero in §4.1);
+  - `rounding_increment` ≤ 0 (breaks every rounding helper);
+  - `floor_nightly_rate` > `base_nightly_rate` (every stay floors);
+  - `seasons` empty; `month_seasons` not exactly 12 entries; a month mapped to
+    an unknown season;
+  - duplicate tier thresholds.
+- **Warnings** (saved, but flagged):
+  - a special date whose `end` is in the past — it silently stops applying;
+  - a LOS tier deeper than `floor_pct_of_rate` allows, which the floor would
+    clip to nothing.
+
+There is deliberately **no warning for a longer stay costing less than a shorter
+one** (§3.1). The tiers are fences; the per-quote threshold warning in §4.5 is
+where that surfaces.
 
 ---
 
@@ -245,7 +323,8 @@ https://…/tools/pricing-calculator.html#s=<base64url payload>
 - Handle dates as `YYYY-MM-DD` using UTC date arithmetic to avoid timezone
   off-by-one errors.
 - Round to whole rupiah after every multiplication (§4.2) so results don't drift
-  from floating-point error.
+  from floating-point error. Implement `round_inc` / `ceil_inc` as integer
+  arithmetic on `x / increment`, not on scaled floats.
 - The examples in §8 are the acceptance tests: `quote()` must reproduce them
   exactly.
 
@@ -262,21 +341,20 @@ Booked 2026-09-01 · check-in Fri 2026-09-25 · checkout Fri 2026-10-02 · 7 nig
 | Step | Calculation | Result |
 | --- | --- | ---: |
 | Gross | Fri–Sat High+weekend 2 × 660,000 + Sun–Wed High 4 × 600,000 + Thu 1 Oct Normal 500,000 | 4,220,000 |
-| LOS (7 nights → 8%) | × 0.92 | 3,882,400 |
-| Last-minute (24 days → 0%) | — | 3,882,400 |
-| Round | | 3,880,000 |
-| Floor (2,450,000) | not binding | **3,880,000** |
-| PBJT | | 388,000 |
-| Guest total | | **4,268,000** |
+| Discount | max(LOS 7 nights → 10%, last-minute 24 days → 0%) = 10% | 3,798,000 |
+| Round | | 3,800,000 |
+| Floor (2,770,000) | not binding | **3,800,000** |
+| PBJT | | 380,000 |
+| Guest total | | **4,180,000** |
 
 | | Pre-tax | PBJT | Total |
 | --- | ---: | ---: | ---: |
-| Ask | 4,070,000 | 407,000 | 4,477,000 |
-| Target | 3,880,000 | 388,000 | 4,268,000 |
-| Floor | 3,690,000 | 369,000 | 4,059,000 |
+| Ask | 3,990,000 | 399,000 | 4,389,000 |
+| Target | 3,800,000 | 380,000 | 4,180,000 |
+| Floor | 3,610,000 | 361,000 | 3,971,000 |
 
-Effective nightly 554,286 · 30-night equivalent 16,628,571 · inventory consumed 8 ·
-revenue per calendar night 485,000 · no warnings (min stay 3).
+Total discount 10% · effective nightly 542,857 · 30-night equivalent 16,285,714 ·
+inventory consumed 8 · revenue per calendar night 475,000 · no warnings (min stay 3).
 
 ### B. Last-minute, below minimum stay
 
@@ -285,10 +363,9 @@ Booked Fri 2026-09-11 · check-in Sat 2026-09-12 · checkout Mon 2026-09-14 · 2
 | Step | Calculation | Result |
 | --- | --- | ---: |
 | Gross | Sat High+weekend 660,000 + Sun High 600,000 | 1,260,000 |
-| LOS (2 nights → 0%) | — | 1,260,000 |
-| Last-minute (1 day → 15%) | × 0.85 | 1,071,000 |
+| Discount | max(LOS 2 nights → 0%, last-minute 1 day → 15%) = 15% | 1,071,000 |
 | Round | | 1,070,000 |
-| Floor (700,000) | not binding | **1,070,000** |
+| Floor (820,000) | not binding | **1,070,000** |
 | PBJT | | 107,000 |
 | Guest total | | **1,177,000** |
 
@@ -298,8 +375,9 @@ Booked Fri 2026-09-11 · check-in Sat 2026-09-12 · checkout Mon 2026-09-14 · 2
 | Target | 1,070,000 | 107,000 | 1,177,000 |
 | Floor | 1,020,000 | 102,000 | 1,122,000 |
 
-Effective nightly 535,000 · 30-night equivalent 16,050,000 · inventory consumed 3 ·
-revenue per calendar night 356,667 · **warning: below minimum stay (High, 3 nights)**.
+Total discount 15% · effective nightly 535,000 · 30-night equivalent 16,050,000 ·
+inventory consumed 3 · revenue per calendar night 356,667 ·
+**warning: below minimum stay (High, 3 nights)**.
 
 ### C. Long stay, floor binds
 
@@ -308,10 +386,9 @@ Booked Sat 2026-10-31 · check-in Sun 2026-11-01 · checkout Tue 2026-12-01 · 3
 | Step | Calculation | Result |
 | --- | --- | ---: |
 | Gross | 22 weekday × 450,000 + 8 weekend × 500,000 (495,000 rounded half up) | 13,900,000 |
-| LOS (30 nights → 20%) | × 0.80 | 11,120,000 |
-| Last-minute (1 day → 15%) | × 0.85 | 9,452,000 |
-| Round | | 9,450,000 |
-| Floor (30 × 350,000) | **binding**, +1,050,000 | **10,500,000** |
+| Discount | max(LOS 30 nights → 30%, last-minute 1 day → 15%) = 30% | 9,730,000 |
+| Round | | 9,730,000 |
+| Floor (30 × 350,000, absolute half) | **binding**, +770,000 | **10,500,000** |
 | PBJT | | 1,050,000 |
 | Guest total | | **11,550,000** |
 
@@ -321,8 +398,12 @@ Booked Sat 2026-10-31 · check-in Sun 2026-11-01 · checkout Tue 2026-12-01 · 3
 | Target | 10,500,000 | 1,050,000 | 11,550,000 |
 | Floor | 10,500,000 | 1,050,000 | 11,550,000 |
 
-Effective nightly 350,000 · 30-night equivalent 10,500,000 · inventory consumed 31 ·
-revenue per calendar night 338,710 · **warning: floor applied (+1,050,000)**.
+Total discount 24% · effective nightly 350,000 · 30-night equivalent 10,500,000 ·
+inventory consumed 31 · revenue per calendar night 338,710 ·
+**warning: floor applied (+770,000)**.
+
+The relative half of the floor would give 9,020,000 here; the absolute half wins
+in Low season, and caps the realised discount at 24% against the 30% tier.
 
 ### D. Extension of C
 
@@ -331,22 +412,21 @@ Booked 2026-11-28 · check-in Tue 2026-12-01 · checkout Tue 2026-12-15 · 14 ni
 | Step | Calculation | Result |
 | --- | --- | ---: |
 | Gross | 10 weekday × 600,000 + 4 weekend × 660,000 | 8,640,000 |
-| LOS (14 nights → 14%; the 30 nights already stayed don't count) | × 0.86 | 7,430,400 |
-| Last-minute | skipped (extension) | 7,430,400 |
-| Extension discount (3%) | × 0.97 | 7,207,488 |
-| Round | | 7,210,000 |
-| Floor (14 × 350,000 = 4,900,000) | not binding | **7,210,000** |
-| PBJT | | 721,000 |
-| Guest total | | **7,931,000** |
+| Discount | max(LOS 14 nights → 20%; the 30 nights already stayed don't count, last-minute skipped for extensions) = 20% | 6,912,000 |
+| Extension discount (3%) | × 0.97 | 6,704,640 |
+| Round | | 6,700,000 |
+| Floor (5,620,000) | not binding | **6,700,000** |
+| PBJT | | 670,000 |
+| Guest total | | **7,370,000** |
 
 | | Pre-tax | PBJT | Total |
 | --- | ---: | ---: | ---: |
-| Ask | 7,570,000 | 757,000 | 8,327,000 |
-| Target | 7,210,000 | 721,000 | 7,931,000 |
-| Floor | 6,850,000 | 685,000 | 7,535,000 |
+| Ask | 7,040,000 | 704,000 | 7,744,000 |
+| Target | 6,700,000 | 670,000 | 7,370,000 |
+| Floor | 6,370,000 | 637,000 | 7,007,000 |
 
-Effective nightly 515,000 · 30-night equivalent 15,450,000 · inventory consumed 14 ·
-revenue per calendar night 515,000 · no warnings.
+Total discount 22% · effective nightly 478,571 · 30-night equivalent 14,357,143 ·
+inventory consumed 14 · revenue per calendar night 478,571 · no warnings.
 
 ### E. Calendar around a special date
 
@@ -358,6 +438,14 @@ revenue per calendar night 515,000 · no warnings.
 | Tue 2027-01-05 | Christmas & New Year | 1.40 | no | 700,000 | 830,000 | 5 |
 | Wed 2027-01-06 | High | 1.20 | no | 600,000 | 710,000 | 3 |
 
+### F. Threshold warning
+
+Booked 2026-01-15 · check-in Mon 2026-04-06 · checkout Sun 2026-05-03 · 27 nights, all Normal
+
+27 nights takes the 14-night tier at 20% → 11,120,000. At 28 nights the monthly
+tier gives 10,080,000. **Warning: 28 nights would price at 10,080,000, 1,040,000
+below this quote.** The quote itself is unchanged.
+
 ---
 
 ## 9. Deliberately not included
@@ -365,8 +453,15 @@ revenue per calendar night 515,000 · no warnings.
 - **Stored bookings, availability states, occupancy and ALOS analytics.** The
   channel calendars already own availability. Preparation days survive only as
   the inventory-consumed metric.
-- **A separate commitment discount.** Threshold discounts on total stay length
-  can't grow much once stays are long (§3.1), so a committed 6-month stay is
-  priced by the floor and the negotiation range, not by an extra tier.
-- **Multiple units or room types**, cleaning and extra-guest fees, deposits,
+- **Per-unit pricing.** All six units are one type and share one rate. Deciding
+  which unit absorbs a long stay is an allocation question the calendar owns,
+  not a pricing one.
+- **Season-specific LOS depth.** The market prices a month 20–25% off in peak
+  and 35–40% off-peak; here the season multiplier and the floor produce the same
+  spread from one ladder — Low season realises 24% against the 30% tier because
+  the absolute floor binds (Example C), while Peak realises the full 30%.
+- **A separate commitment discount.** The 28-night tier is the commitment
+  discount; a stay long enough to want more is priced by the floor and the
+  negotiation range.
+- **Multiple room types**, cleaning and extra-guest fees, deposits,
   cancellations, tax-inclusive (reverse) calculations, per-booking OTA quotes.
