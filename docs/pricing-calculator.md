@@ -22,7 +22,6 @@ is deliberately left out.
 | Nights | checkout − check-in, in days |
 | Lead time | check-in − booking date, in days |
 | Extension | A stay that starts on the checkout date of the same guest's current stay |
-| Total nights | For an extension: extension checkout − the date the current stay started. Otherwise the same as nights. |
 | `round(x)` | Nearest whole rupiah, halves up |
 | `round_inc(x)` | Nearest multiple of `rounding_increment`, halves up |
 | `ceil_inc(x)` | Next multiple of `rounding_increment` at or above x |
@@ -87,7 +86,7 @@ Rules:
 - **Special dates** belong to a specific year. `start` and `end` are the first
   and last nights included. `min_stay` is optional; if it's missing, the
   season's value is used. Special dates must not overlap.
-- **LOS tier**: the tier with the highest `min_nights` ≤ total nights; no match → 0%.
+- **LOS tier**: the tier with the highest `min_nights` ≤ nights; no match → 0%.
 - **Last-minute tier**: the tier with the smallest `max_lead_days` ≥ lead time;
   no match → 0%.
 
@@ -125,12 +124,12 @@ the direct-booking equivalent.
 
 | # | Step | Formula | Notes |
 | --- | --- | --- | --- |
-| 1 | Gross | Σ `night_rate` over the nights being quoted | An extension quotes only its own nights |
-| 2 | LOS discount | `p = round(p × (1 − los_pct/100))` | Tier chosen by **total nights**, so an extension counts the whole stay so far |
+| 1 | Gross | Σ `night_rate` over the stay's nights | |
+| 2 | LOS discount | `p = round(p × (1 − los_pct/100))` | An extension counts **only its own nights**, not the stay so far |
 | 3 | Last-minute | `p = round(p × (1 − lm_pct/100))` | Skipped if disabled or for an extension |
 | 4 | Extension discount | `p = round(p × (1 − extension_discount_pct/100))` | Extension only |
 | 5 | Round | `p = round_inc(p)` | |
-| 6 | Floor | `net = max(p, stay_floor)`, `stay_floor = ceil_inc(nights × floor_nightly_rate)` | `nights`, not total nights |
+| 6 | Floor | `net = max(p, stay_floor)`, `stay_floor = ceil_inc(nights × floor_nightly_rate)` | |
 | 7 | PBJT | `tax = round(net × tax_pct/100)` | |
 | 8 | Guest total | `net + tax` | |
 
@@ -161,7 +160,7 @@ Show tax and guest total for each of the three. For long stays, raising
 - **Warnings** (the quote is still shown): nights < `min_stay` of the check-in
   night; floor applied (show the amount it added).
 - **Errors** (no quote): missing dates; checkout ≤ check-in; booking date after
-  check-in; for an extension, a start date that isn't before check-in.
+  check-in.
 
 ---
 
@@ -172,8 +171,7 @@ One page with three tabs.
 ### 5.1 Quote
 
 - **Inputs:** check-in, checkout, booking date (default today), "Extension of
-  current stay" checkbox, and — only when that box is ticked — "current stay
-  started".
+  current stay" checkbox.
 - **Outputs:** the steps from §4.2 with the discount % applied at each; the
   negotiation table (§4.3); metrics (§4.4); warnings. Per-night rates in a
   collapsible table (date, weekday, season/special name, rate).
@@ -322,30 +320,29 @@ Booked Sat 2026-10-31 · check-in Sun 2026-11-01 · checkout Tue 2026-12-01 · 3
 Effective nightly 350,000 · 30-night equivalent 10,500,000 · inventory consumed 31 ·
 revenue per calendar night 338,710 · **warning: floor applied (+1,050,000)**.
 
-### D. Extension of C, with LOS from the whole stay
+### D. Extension of C
 
-Booked 2026-11-28 · current stay started 2026-11-01 · check-in Tue 2026-12-01 ·
-checkout Tue 2026-12-15 · 14 nights quoted, 44 total nights, all High
+Booked 2026-11-28 · check-in Tue 2026-12-01 · checkout Tue 2026-12-15 · 14 nights, all High · extension
 
 | Step | Calculation | Result |
 | --- | --- | ---: |
-| Gross (extension nights only) | 10 weekday × 600,000 + 4 weekend × 660,000 | 8,640,000 |
-| LOS (44 total nights → 20%) | × 0.80 | 6,912,000 |
-| Last-minute | skipped (extension) | 6,912,000 |
-| Extension discount (3%) | × 0.97 | 6,704,640 |
-| Round | | 6,700,000 |
-| Floor (14 × 350,000 = 4,900,000) | not binding | **6,700,000** |
-| PBJT | | 670,000 |
-| Guest total | | **7,370,000** |
+| Gross | 10 weekday × 600,000 + 4 weekend × 660,000 | 8,640,000 |
+| LOS (14 nights → 14%; the 30 nights already stayed don't count) | × 0.86 | 7,430,400 |
+| Last-minute | skipped (extension) | 7,430,400 |
+| Extension discount (3%) | × 0.97 | 7,207,488 |
+| Round | | 7,210,000 |
+| Floor (14 × 350,000 = 4,900,000) | not binding | **7,210,000** |
+| PBJT | | 721,000 |
+| Guest total | | **7,931,000** |
 
 | | Pre-tax | PBJT | Total |
 | --- | ---: | ---: | ---: |
-| Ask | 7,040,000 | 704,000 | 7,744,000 |
-| Target | 6,700,000 | 670,000 | 7,370,000 |
-| Floor | 6,370,000 | 637,000 | 7,007,000 |
+| Ask | 7,570,000 | 757,000 | 8,327,000 |
+| Target | 7,210,000 | 721,000 | 7,931,000 |
+| Floor | 6,850,000 | 685,000 | 7,535,000 |
 
-Effective nightly 478,571 · 30-night equivalent 14,357,143 · inventory consumed 14 ·
-revenue per calendar night 478,571 · no warnings.
+Effective nightly 515,000 · 30-night equivalent 15,450,000 · inventory consumed 14 ·
+revenue per calendar night 515,000 · no warnings.
 
 ### E. Calendar around a special date
 
