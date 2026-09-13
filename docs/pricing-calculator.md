@@ -305,7 +305,10 @@ One page with three tabs.
   maps to its own listing (Airbnb) or room type (Booking.com), so a type's own
   ladder exports as-is. Rates in the summary are OTA rates and are **not**
   pre-discounted: the channel applies the exported LOS and last-minute rules
-  itself.
+  itself. The last-minute tiers are listed only when `last_minute.enabled` is
+  on; otherwise the block states that last-minute is off, so a discount already
+  set on the channel gets switched off rather than left running against quotes
+  that never take it.
 
 The default ladder's three tiers are all exportable, as is any per-type ladder
 on the same thresholds. Airbnb's weekly discount covers thresholds
