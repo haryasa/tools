@@ -109,9 +109,11 @@ Rules:
   `min_nights` ≤ nights; no match → 0%.
 - **Last-minute tier**: the tier with the smallest `max_lead_days` ≥ lead time;
   no match → 0%.
-- **LOS and last-minute do not stack**, and nothing else compounds: the stay
-  takes whichever of the two is deeper (§4.2). Airbnb resolves the same overlap
-  by fixed priority rather than by depth — see §5.2.
+- **LOS and last-minute do not stack**, and nothing else compounds. They
+  resolve by fixed priority, not by depth: a stay that reaches any LOS tier
+  takes it, and last-minute applies only to a stay that doesn't (§4.2). This is
+  Airbnb's order, adopted so a direct quote and the same stay on the channel
+  take the same discount (§5.2).
 - **`last_minute.enabled` defaults to `false`.** A lead-time ladder discounts
   every late booking, including the ones that would have come anyway; the
   practice it imitates is gap-filling a date that is genuinely at risk. Turn it
@@ -189,7 +191,7 @@ night worth 600,000 direct needs 810,000 on the channel, not 710,000. It rounds
 | # | Step | Formula | Notes |
 | --- | --- | --- | --- |
 | 1 | Gross | `p = Σ night_rate(T, D)` over the stay's nights | |
-| 2 | Discount | `d = max(los_pct, lm_pct)`, `p = round(p × (1 − d/100))` | `los_pct` comes from T's LOS ladder. `lm_pct` is 0 if last-minute is disabled or this is an extension. An extension counts **only its own nights** for the LOS tier, not the stay so far |
+| 2 | Discount | `d = los_pct > 0 ? los_pct : lm_pct`, `p = round(p × (1 − d/100))` | `los_pct` comes from T's LOS ladder. `lm_pct` is 0 if last-minute is disabled or this is an extension. LOS takes priority even when last-minute is deeper (§3). An extension counts **only its own nights** for the LOS tier, not the stay so far |
 | 3 | Round | `p = round_inc(p)` | |
 | 4 | Floor | `net = max(p, stay_floor)` | see below |
 | 5 | PBJT | `tax = round(net × tax_pct/100)` | |
@@ -275,8 +277,8 @@ One page with three tabs.
 - **Inputs:** unit type (default the first; hidden when there is only one),
   check-in, checkout, booking date (default today), "Extension of current stay"
   checkbox.
-- **Outputs:** the steps from §4.2, showing which discount won at step 2 and the
-  one it beat; the negotiation table (§4.3); metrics (§4.4), with total discount
+- **Outputs:** the steps from §4.2, showing which discount applied at step 2 and
+  the one it overrode, if any; the negotiation table (§4.3); metrics (§4.4), with total discount
   next to the breakdown; warnings. Per-night rates in a collapsible table (date,
   weekday, season/special name, rate).
 
@@ -300,15 +302,17 @@ The default ladder's three tiers are all exportable, as is any per-type ladder
 on the same thresholds. Airbnb's weekly discount covers thresholds
 from one up to three weeks and its monthly covers four up to twelve, and
 Booking.com accepts arbitrary minimum-stay rate plans (or LOS-based pricing over
-connectivity), so 7 / 14 / 28 all fit. Two mismatches do remain, and both belong
-in the block itself because the tool cannot enforce either:
+connectivity), so 7 / 14 / 28 all fit.
 
-- **Airbnb picks one discount per night by fixed priority, not by depth.** Its
-  order is new-listing → custom promotion → length-of-stay → early-bird →
-  last-minute. Where §4.2 takes whichever of LOS and last-minute runs deeper,
-  Airbnb always takes LOS: a 7-night stay booked tomorrow quotes 15% here and
-  10% there. The gap opens only when `last_minute.enabled` is on — one more
-  reason to leave it off unless the calendar is soft.
+Airbnb picks one discount per stay by fixed priority — new-listing → custom
+promotion → length-of-stay → early-bird → last-minute — and §4.2 follows the
+same LOS-before-last-minute order on purpose, so the exported rules reproduce a
+direct quote's discount rather than approximating it. That keeps the §4.1 promise
+that an OTA booking leaves the same money in hand.
+
+One mismatch does remain, and it belongs in the block itself because the tool
+cannot enforce it:
+
 - **The floor cannot be exported.** A channel that stacks its own promotions on
   top of the exported tiers can land below a type's `floor_nightly_rate`; check the
   resulting payout before enabling promotions there.
@@ -353,7 +357,13 @@ to a 10% cap.
   - a special date whose `end` is in the past — it silently stops applying;
   - a LOS tier, in any ladder, deeper than `floor_pct_of_rate` allows, which
     the floor would clip to nothing — name the type when it's a type's own
-    ladder.
+    ladder;
+  - with `last_minute.enabled` on, a last-minute tier deeper than the shortest
+    tier of any LOS ladder. Priority (§3) then drops the discount as a stay
+    crosses that threshold, so the added night prices above its own rate: in
+    Normal season with a Monday check-in booked the day before, 6 nights at 15%
+    come to 2,640,000 and 7 nights at 10% to 3,240,000 — 600,000 for a 500,000
+    night. Name both tiers, and the type when it's a type's own ladder.
 
 There is deliberately **no warning for a longer stay costing less than a shorter
 one** (§3.1). The tiers are fences; the per-quote threshold warning in §4.5 is
@@ -426,7 +436,7 @@ Booked 2026-09-01 · check-in Fri 2026-09-25 · checkout Fri 2026-10-02 · 7 nig
 | Step | Calculation | Result |
 | --- | --- | ---: |
 | Gross | Fri–Sat High+weekend 2 × 660,000 + Sun–Wed High 4 × 600,000 + Thu 1 Oct Normal 500,000 | 4,220,000 |
-| Discount | max(LOS 7 nights → 10%, last-minute off → 0%) = 10% | 3,798,000 |
+| Discount | LOS 7 nights → 10% (last-minute off) | 3,798,000 |
 | Round | | 3,800,000 |
 | Floor (2,770,000) | not binding | **3,800,000** |
 | PBJT | | 380,000 |
@@ -449,7 +459,7 @@ Booked Fri 2026-09-11 · check-in Sat 2026-09-12 · checkout Mon 2026-09-14 · 2
 | Step | Calculation | Result |
 | --- | --- | ---: |
 | Gross | Sat High+weekend 660,000 + Sun High 600,000 | 1,260,000 |
-| Discount | max(LOS 2 nights → 0%, last-minute 1 day → 15%) = 15% | 1,071,000 |
+| Discount | LOS 2 nights → no tier, so last-minute 1 day → 15% | 1,071,000 |
 | Round | | 1,070,000 |
 | Floor (820,000) | not binding | **1,070,000** |
 | PBJT | | 107,000 |
@@ -472,7 +482,7 @@ Booked Sat 2026-10-31 · check-in Sun 2026-11-01 · checkout Tue 2026-12-01 · 3
 | Step | Calculation | Result |
 | --- | --- | ---: |
 | Gross | 22 weekday × 450,000 + 8 weekend × 500,000 (495,000 rounded half up) | 13,900,000 |
-| Discount | max(LOS 30 nights → 30%, last-minute off → 0%) = 30% | 9,730,000 |
+| Discount | LOS 30 nights → 30% (last-minute off) | 9,730,000 |
 | Round | | 9,730,000 |
 | Floor (30 × 350,000, absolute half) | **binding**, +770,000 | **10,500,000** |
 | PBJT | | 1,050,000 |
@@ -498,7 +508,7 @@ Booked 2026-11-28 · check-in Tue 2026-12-01 · checkout Tue 2026-12-15 · 14 ni
 | Step | Calculation | Result |
 | --- | --- | ---: |
 | Gross | 10 weekday × 600,000 + 4 weekend × 660,000 | 8,640,000 |
-| Discount | max(LOS 14 nights → 20%; the 30 nights already stayed don't count, last-minute skipped for extensions) = 20% | 6,912,000 |
+| Discount | LOS 14 nights → 20% (the 30 nights already stayed don't count; last-minute skipped for extensions) | 6,912,000 |
 | Round | | 6,910,000 |
 | Floor (5,620,000) | not binding | **6,910,000** |
 | PBJT | | 691,000 |
@@ -515,8 +525,9 @@ inventory consumed 14 · revenue per calendar night 493,571 · no warnings.
 
 The extension flag earns the guest nothing here beyond the 14-night tier their
 own nights qualify for, and its last-minute suppression does not bind either:
-the 3-day lead time would only have offered 10%, which the 20% tier beats
-anyway. Suppression bites on short extensions — three more nights booked the day
+a stay that reaches a LOS tier never looks at last-minute (§3), so the 3-day
+lead time's 10% was never in play. Suppression bites only on extensions too
+short for any LOS tier — three more nights booked the day
 before would otherwise take 15% off for a guest who was never going anywhere.
 
 ### E. Calendar around a special date
@@ -558,7 +569,7 @@ Booked 2026-09-01 · check-in Fri 2026-09-25 · checkout Fri 2026-10-02 · 7 nig
 | Step | Calculation | Result |
 | --- | --- | ---: |
 | Gross | Fri–Sat High+weekend 2 × 790,000 (792,000 rounded) + Sun–Wed High 4 × 720,000 + Thu 1 Oct Normal 600,000 | 5,060,000 |
-| Discount | max(Deluxe LOS 7 nights → 5%, last-minute off → 0%) = 5% | 4,807,000 |
+| Discount | Deluxe LOS 7 nights → 5% (last-minute off) | 4,807,000 |
 | Round | | 4,810,000 |
 | Floor (3,300,000) | not binding | **4,810,000** |
 | PBJT | | 481,000 |
