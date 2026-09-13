@@ -46,7 +46,7 @@ Defaults, which are also the format used by the settings link:
   "tax_pct": 10,
   "preparation_days": 1,
   "ota_host_fee_pct": 15.5,
-  "ota_tax_absorbed_pct": 10,
+  "ota_tax_base": "gross",
 
   "weekend": { "nights": ["fri", "sat"], "multiplier": 1.10 },
 
@@ -118,9 +118,12 @@ Rules:
   every late booking, including the ones that would have come anyway; the
   practice it imitates is gap-filling a date that is genuinely at risk. Turn it
   on when the calendar is soft, off when it isn't.
-- **`ota_tax_absorbed_pct`**: the share of the OTA rate that PBJT takes out of
-  the payout (§4.1). Set it to `tax_pct` if you owe PBJT on the guest's gross
-  payment, or to `0` if your bapenda lets you compute it on the net payout.
+- **`ota_tax_base`**: what PBJT is charged on for an OTA booking, where the
+  guest never paid it on top and it comes out of the payout instead (§4.1).
+  `"gross"` if you owe it on the guest's full payment, `"payout"` if your
+  bapenda lets you compute it on what the channel pays you after commission.
+  The rate is always `tax_pct`; this only picks the base. There is no setting
+  that skips the tax: a smaller base is still taxed.
 
 ### 3.1 Why the tiers step instead of tapering
 
@@ -171,7 +174,10 @@ M = special date multiplier if D is in a special date, else D's season multiplie
 W = weekend.multiplier if D's weekday is in weekend.nights, else 1
 
 min_stay(D) = special date min_stay if set, else D's season min_stay
-ota_rate(T, D) = ceil_inc(night_rate(T, D) / (1 − (ota_host_fee_pct + ota_tax_absorbed_pct)/100))
+ota_rate(T, D) = ceil_inc(night_rate(T, D) / K)
+
+K = 1 − (ota_host_fee_pct + tax_pct)/100             if ota_tax_base = "gross"
+K = (1 − ota_host_fee_pct/100) × (1 − tax_pct/100)   if ota_tax_base = "payout"
 ```
 
 Only the base rate depends on the type; `M`, `W` and the minimum stay are the
@@ -182,8 +188,11 @@ quotes always agree.
 The OTA rate is the price that leaves the same money in hand as a direct
 booking, so it grosses up for **both** deductions a channel booking carries: the
 commission, and the PBJT still owed on a stay where the guest never saw a tax
-line (§5.2). At the defaults the divisor is 0.745, not 0.845 — a High weekday
-night worth 600,000 direct needs 810,000 on the channel, not 710,000. It rounds
+line (§5.2). At the defaults (`"gross"`) K is 0.745, not 0.845 — a High weekday
+night worth 600,000 direct needs 810,000 on the channel, not 710,000. Under
+`"payout"` the tax falls on the 84.5% left after commission, so K is
+0.845 × 0.90 = 0.7605 and the same night needs 790,000. Ignoring the tax
+altogether would price it at 710,000 and leave about 540,000 in hand. It rounds
 **up**, so neither deduction eats into the direct-booking equivalent.
 
 ### 4.2 Stay price
@@ -320,12 +329,12 @@ cannot enforce it:
 On PBJT: the tax is owed by the accommodation operator, not the platform, and
 Airbnb does not remit it in Indonesia — so an OTA booking still owes PBJT even
 though the guest never saw it as a line item. `ota_rate` grosses up for it
-through `ota_tax_absorbed_pct` (§4.1). The base is the amount paid to the
-accommodation provider, and the perda language does not say plainly whether the
-channel's commission sits inside or outside that base — so confirm the treatment
-and the rate with the local bapenda, and set `ota_tax_absorbed_pct` to 0 if the
-answer is that only the payout is taxable. Rates are set per kabupaten/kota up
-to a 10% cap.
+at `tax_pct` on the base `ota_tax_base` names (§4.1). The base is the amount
+paid to the accommodation provider, and the perda language does not say plainly
+whether the channel's commission sits inside or outside that base — so confirm
+the treatment and the rate with the local bapenda, and switch `ota_tax_base` to
+`"payout"` if the answer is that only the payout is taxable. Rates are set per
+kabupaten/kota up to a 10% cap.
 
 ### 5.3 Settings
 
@@ -342,7 +351,10 @@ to a 10% cap.
   valid one):
   - overlapping special dates; start after end; an unparseable date;
   - multiplier ≤ 0; percentage outside 0–100;
-  - `ota_host_fee_pct + ota_tax_absorbed_pct` ≥ 100 (divides by zero in §4.1);
+  - `ota_tax_base` not `"gross"` or `"payout"`;
+  - K in §4.1 ≤ 0, which divides by zero or goes negative:
+    `ota_host_fee_pct + tax_pct` ≥ 100 under `"gross"`, or either one = 100
+    under `"payout"`;
   - `rounding_increment` ≤ 0 (breaks every rounding helper);
   - `unit_types` empty; a type with an empty or duplicate name;
   - a type's `floor_nightly_rate` > its `base_nightly_rate` (every stay floors);
@@ -540,7 +552,8 @@ before would otherwise take 15% off for a guest who was never going anywhere.
 | Tue 2027-01-05 | Christmas & New Year | 1.40 | no | 700,000 | 940,000 | 5 |
 | Wed 2027-01-06 | High | 1.20 | no | 600,000 | 810,000 | 3 |
 
-OTA rates divide by 1 − (15.5 + 10)/100 = 0.745 and round up (§4.1).
+OTA rates divide by K = 1 − (15.5 + 10)/100 = 0.745 (`ota_tax_base` `"gross"`)
+and round up (§4.1).
 
 ### F. Threshold warning
 
