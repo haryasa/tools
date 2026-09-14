@@ -124,9 +124,12 @@ Rules:
   the tax comes out of the payout. `"custom_tax"` lists the rate without tax and
   has the channel add PBJT as its own line — Airbnb's custom tax feature
   (listing Settings → Taxes → Add a tax: hotel tax, percentage per booking, on
-  the nightly price). `"custom_tax"` is cheaper for the guest and leaves more in
-  hand, because the channel's commission is not charged on a tax it collects as
-  a separate line; use it wherever the channel offers the feature. It defaults
+  the nightly price). `"custom_tax"` is cheaper for the guest, because the channel's
+  commission is not charged on a tax it collects as a separate line: before
+  rounding, about 3% less than `"included"` with `"gross"` and 1% less than
+  with `"payout"`. It does not leave more in hand — every mode grosses up to
+  the same direct-booking equivalent (§4.1). Use it wherever the channel offers
+  the feature. It defaults
   to `"included"` only because that works on every channel.
 - **`ota_tax_base`**: under `"included"` only, what PBJT is charged on, since
   the guest never paid it on top and it comes out of the payout instead (§4.1).
@@ -212,19 +215,25 @@ altogether would price it at 720,000 and leave about 540,000 in hand.
 
 Under `"custom_tax"` the channel charges PBJT on top and pays it out separately,
 so the rate grosses up for the commission alone: K is 0.845 and the same night
-lists at 720,000, plus 72,000 PBJT on the guest's bill. The two modes compare
-like this for that night:
+lists at 720,000, plus 72,000 PBJT on the guest's bill. The three settings
+compare like this for that night:
 
-| | `"included"`, `"gross"` | `"custom_tax"` |
-| --- | ---: | ---: |
-| Listed nightly rate | 810,000 | 720,000 |
-| PBJT | 81,000, out of payout | 72,000, on the guest's bill |
-| Guest pays | 810,000 | 792,000 |
-| Commission | 125,550 | 111,600 |
-| In hand after PBJT | 603,450 | 608,400 |
+| | `"included"`, `"gross"` | `"included"`, `"payout"` | `"custom_tax"` |
+| --- | ---: | ---: | ---: |
+| Listed nightly rate | 810,000 | 790,000 | 720,000 |
+| PBJT | 81,000, out of payout | 66,755, out of payout | 72,000, on the guest's bill |
+| Guest pays | 810,000 | 790,000 | 792,000 |
+| Commission | 125,550 | 122,450 | 111,600 |
+| In hand after PBJT | 603,450 | 600,795 | 608,400 |
 
-The difference is the commission on the tax: under `"included"` the channel
-takes its 15.5% of the PBJT portion too.
+Under `"payout"` the PBJT is 10% of the 667,550 left after commission, not of
+the listed rate.
+
+Every column targets the same 600,000 in hand; what it keeps above that is
+`ceil_inc` rounding, not the mode. Before rounding the guest pays 805,369,
+788,956 and 781,065 respectively. That gap is the commission on the tax: under
+`"included"` the channel takes its 15.5% of the PBJT portion too, and under
+`"gross"` the tax is also charged on the commission itself.
 
 ### 4.2 Stay price
 
